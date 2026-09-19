@@ -1,0 +1,33 @@
+{
+    "name": "shirahcan/ai-waterfall",
+    "description": "Thin client for the Shirah estate's ai-service. Speaks to it over loopback; holds no provider keys of its own.",
+    "type": "library",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^11.0|^12.0",
+        "guzzlehttp/guzzle": "^7.8"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Shirahcan\\AiWaterfall\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Shirahcan\\AiWaterfall\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Shirahcan\\AiWaterfall\\AiWaterfallServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

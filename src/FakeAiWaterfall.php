@@ -1,0 +1,102 @@
+<?php
+
+namespace Shirahcan\AiWaterfall;
+
+use Shirahcan\AiWaterfall\Exceptions\AiUnavailableException;
+use Throwable;
+
+/**
+ * A test double, so every product can exercise its AI paths with no service, no
+ * keys and no network.
+ *
+ * ⚠ THIS IS PART OF THE CONTRACT, NOT A CONVENIENCE. Three products are about to
+ * depend on one service; if testing an AI path required that service to be
+ * running, each product's suite would become flaky in a way that has nothing to
+ * do with the code under test - and the honest response to a flaky suite is to
+ * stop running it. Portify's FakeAIProviderAdapter played exactly this role.
+ *
+ * Queue results (or Throwables) in the order they should be returned:
+ *
+ *   $fake->queue(['action' => 'ask']);
+ *   $fake->queueFailure(new AiUnavailableException('down'));
+ */
+class FakeAiWaterfall extends AiWaterfallClient
+{
+    /** @var array<int, mixed> */
+    private array $queue = [];
+
+    /** @var array<int, array{task: string, mode: string, payload: mixed}> */
+    public array $calls = [];
+
+    public function __construct()
+    {
+        // Deliberately does NOT call parent::__construct: there is no base URL and
+        // no trust key, and a fake that needed either would defeat its own purpose.
+    }
+
+    public function queue(mixed $result): static
+    {
+        $this->queue[] = $result;
+
+        return $this;
+    }
+
+    public function queueFailure(Throwable $e): static
+    {
+        $this->queue[] = $e;
+
+        return $this;
+    }
+
+    public function generateJson(string $task, string $system, string $prompt, ?int $maxRepairs = null): AiResult
+    {
+        return $this->next($task, 'json', $prompt);
+    }
+
+    public function generateText(string $task, string $system, string $prompt): AiResult
+    {
+        return $this->next($task, 'text', $prompt);
+    }
+
+    public function invokeRaw(string $task, array $payload, array $requiredKeys = []): AiResult
+    {
+        return $this->next($task, 'raw', $payload);
+    }
+
+    public function credentialStatus(): array
+    {
+        return ['credentials' => [], 'benched' => 0];
+    }
+
+    public function usage(array $query = []): array
+    {
+        return ['totals' => ['calls' => count($this->calls)]];
+    }
+
+    public function isReachable(): bool
+    {
+        return true;
+    }
+
+    private function next(string $task, string $mode, mixed $payload): AiResult
+    {
+        $this->calls[] = ['task' => $task, 'mode' => $mode, 'payload' => $payload];
+
+        if ($this->queue === []) {
+            /*
+             * ⚠ An exhausted queue THROWS rather than returning something empty.
+             * A fake that quietly invents a result lets a test pass while asserting
+             * nothing, which is worse than no test at all.
+             */
+            throw new AiUnavailableException('FakeAiWaterfall queue exhausted for task ['.$task.']');
+        }
+
+        $next = array_shift($this->queue);
+
+        if ($next instanceof Throwable) {
+            throw $next;
+        }
+
+        return $next instanceof AiResult ? $next : new AiResult(data: $next, provider: 'fake', model: 'fake');
+    }
+}
