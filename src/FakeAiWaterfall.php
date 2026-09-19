@@ -48,6 +48,25 @@ class FakeAiWaterfall extends AiWaterfallClient
         return $this;
     }
 
+    /**
+     * ⚠ RETURNS ITSELF, UNLIKE THE REAL CLIENT, AND THAT IS DELIBERATE.
+     *
+     * AiWaterfallClient::withBudget() returns a CLONE, which is right for real
+     * use - a per-call budget must not leak into the next caller. But a test
+     * holds ONE fake and asserts against its recorded $calls, so a clone would
+     * silently record the call on an object the test never sees and every
+     * assertion would read "no calls" while the code under test worked
+     * perfectly. That failure looks like a broken seam and is really a broken
+     * double.
+     *
+     * The budget itself is not modelled here: what a test needs to know is which
+     * calls were made, and the real client's own tests cover the wire shape.
+     */
+    public function withBudget(?float $budgetSeconds, ?int $perProviderTimeout = null): static
+    {
+        return $this;
+    }
+
     public function generateJson(string $task, string $system, string $prompt, ?int $maxRepairs = null): AiResult
     {
         return $this->next($task, 'json', $prompt);

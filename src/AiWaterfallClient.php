@@ -37,6 +37,29 @@ class AiWaterfallClient
         ]);
     }
 
+    /**
+     * The caller's latency caps for the next call, or null to leave them to the
+     * service.
+     *
+     * ⚠ THESE ARE NOT ADVISORY, AND LOSING THEM IS A REAL DEFECT. A caller that
+     * caps a provider at 6 seconds is protecting an INLINE request: blow the
+     * budget and it takes a gateway timeout, which kills its own "degrade to
+     * something deterministic" branch before that branch can run. Until these
+     * crossed the wire the service silently substituted its own 30s default, so
+     * every such cap was quietly discarded the moment a product migrated.
+     */
+    private ?float $budgetSeconds = null;
+    private ?int $perProviderTimeout = null;
+
+    public function withBudget(?float $budgetSeconds, ?int $perProviderTimeout = null): static
+    {
+        $clone = clone $this;
+        $clone->budgetSeconds = $budgetSeconds;
+        $clone->perProviderTimeout = $perProviderTimeout;
+
+        return $clone;
+    }
+
     /** Forced-JSON generation from a system + user prompt. */
     public function generateJson(string $task, string $system, string $prompt, ?int $maxRepairs = null): AiResult
     {
@@ -135,6 +158,14 @@ class AiWaterfallClient
                 'filename' => $m['filename'] ?? null,
             ], $media)),
             'max_repairs' => $maxRepairs,
+            /*
+             * ⚠ ALWAYS TRUE FOR MEDIA, REGARDLESS OF THE TASK NAME. A call that
+             * attaches a document IS a call that sends a document, whatever it is
+             * called - so this does not wait for the task to appear on the
+             * service's sensitive list. The flag can only TIGHTEN; a task already
+             * listed there stays sensitive whatever a caller sends.
+             */
+            'sensitive'   => true,
         ]);
     }
 
@@ -164,10 +195,26 @@ class AiWaterfallClient
 
     private function call(array $body): AiResult
     {
+        $body['budget_seconds']       = $this->budgetSeconds;
+        $body['per_provider_timeout'] = $this->perProviderTimeout;
+
         $body = array_filter($body, fn ($v) => $v !== null && $v !== []);
 
+        /*
+         * ⚠ THE SOCKET MUST OUTLIVE THE WORK BY A MARGIN, NOT BY NOTHING. If the
+         * HTTP timeout equalled the waterfall budget, a run that used its full
+         * budget would be cut off by this client a fraction before the service
+         * returned its answer - and the caller would see a connection failure
+         * where the estate had actually succeeded. The margin covers the hop and
+         * the service's own bookkeeping.
+         */
+        $options = [];
+        if ($this->budgetSeconds !== null) {
+            $options['timeout'] = $this->budgetSeconds + 15;
+        }
+
         try {
-            $response = $this->http->post('api/v1/generate', [
+            $response = $this->http->post('api/v1/generate', $options + [
                 'headers' => $this->headers(),
                 'json'    => $body,
                 'http_errors' => false,
