@@ -53,18 +53,88 @@ class AiWaterfallClient
     }
 
     /**
-     * A provider-shaped payload the CALLER built.
+     * A multi-turn conversation with YOUR JSON schema enforced.
      *
-     * This is how Porter keeps its conversational turn - Gemini `contents` is not
-     * OpenAI `messages` - without the service ever learning what a Porter turn is.
-     * `requiredKeys` drives the service's schema-repair retry without it needing to
-     * know what those keys MEAN.
+     * This is how a caller keeps a structured, stateful exchange - Porter's intake
+     * turn, a finance assistant's verdict - without the service ever learning what
+     * that structure MEANS.
+     *
+     * ⚠ THE PAYLOAD IS PROVIDER-NEUTRAL, AND IT HAS TO BE. An earlier version of
+     * this method was called invokeRaw() and took "a provider-shaped payload the
+     * CALLER built". That cannot work across a waterfall: you do not know whether
+     * Claude, Gemini or Grok will answer, and their wire formats are mutually
+     * invalid. A payload shaped for one is an HTTP 400 from the others, which the
+     * waterfall reads as "that provider failed" - so a single shape mismatch walks
+     * the whole ladder and comes back as "all providers failed".
+     *
+     * Send the system prompt and an ordered list of {role, content} turns. Each
+     * adapter inside the service projects that into its own format.
+     *
+     * @param  list<array{role: string, content: string}>  $messages  Roles are `user`/`assistant`.
+     * @param  array<string, mixed>  $schema  Your JSON Schema. The service never owns one.
+     * @param  string  $schemaName  The model SEES this (it becomes Claude's tool
+     *   name), so if your system prompt says "call the submit_next_turn tool", pass
+     *   that exact name here or the instruction points at nothing.
+     * @param  list<string>  $requiredKeys  Drives the schema-repair retry. The
+     *   service enforces presence; the SEMANTIC check stays with you.
      */
-    public function invokeRaw(string $task, array $payload, array $requiredKeys = []): AiResult
-    {
+    public function generateStructured(
+        string $task,
+        string $system,
+        array $messages,
+        array $schema = [],
+        string $schemaName = 'structured_output',
+        array $requiredKeys = [],
+        ?int $maxRepairs = null,
+    ): AiResult {
         return $this->call([
-            'task' => $task, 'mode' => 'raw',
-            'payload' => $payload, 'required_keys' => $requiredKeys,
+            'task'          => $task,
+            'mode'          => 'structured',
+            'system'        => $system,
+            'messages'      => array_values($messages),
+            'json_schema'   => $schema,
+            'schema_name'   => $schemaName,
+            'required_keys' => $requiredKeys,
+            'max_repairs'   => $maxRepairs,
+        ]);
+    }
+
+    /**
+     * Forced-JSON generation where the model READS attached images/PDFs directly,
+     * instead of OCR text.
+     *
+     * ⚠ THIS SENDS THE DOCUMENT ITSELF. For Portify that means a real client's
+     * passport, bank statement or IRCC letter crossing the hop as bytes. The
+     * service treats the task as SENSITIVE when it is listed in its
+     * `sensitive_tasks` config, and then only a credential a human has explicitly
+     * cleared may serve it - so an uncleared estate REFUSES with
+     * NoCompliantCredentialException rather than quietly falling back to a free
+     * training-tier provider. Treat that refusal as the control working.
+     *
+     * A provider with no vision support is SKIPPED, exactly as in-process, so a
+     * mixed bench degrades to its vision-capable rungs rather than failing.
+     *
+     * @param  list<array{mime: string, bytes: string, filename?: ?string}>  $media
+     *   Raw bytes, NOT base64; this encodes them.
+     */
+    public function generateFromMedia(
+        string $task,
+        string $system,
+        string $prompt,
+        array $media,
+        ?int $maxRepairs = null,
+    ): AiResult {
+        return $this->call([
+            'task'        => $task,
+            'mode'        => 'media',
+            'system'      => $system,
+            'prompt'      => $prompt,
+            'media'       => array_values(array_map(fn (array $m) => [
+                'mime'     => $m['mime'],
+                'data'     => base64_encode($m['bytes']),
+                'filename' => $m['filename'] ?? null,
+            ], $media)),
+            'max_repairs' => $maxRepairs,
         ]);
     }
 

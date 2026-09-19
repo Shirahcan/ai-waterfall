@@ -58,9 +58,40 @@ class FakeAiWaterfall extends AiWaterfallClient
         return $this->next($task, 'text', $prompt);
     }
 
-    public function invokeRaw(string $task, array $payload, array $requiredKeys = []): AiResult
-    {
-        return $this->next($task, 'raw', $payload);
+    public function generateStructured(
+        string $task,
+        string $system,
+        array $messages,
+        array $schema = [],
+        string $schemaName = 'structured_output',
+        array $requiredKeys = [],
+        ?int $maxRepairs = null,
+    ): AiResult {
+        return $this->next($task, 'structured', [
+            'system' => $system, 'messages' => $messages,
+            'schema' => $schema, 'schema_name' => $schemaName,
+            'required_keys' => $requiredKeys,
+        ]);
+    }
+
+    public function generateFromMedia(
+        string $task,
+        string $system,
+        string $prompt,
+        array $media,
+        ?int $maxRepairs = null,
+    ): AiResult {
+        /*
+         * ⚠ The MIMES are logged, the BYTES are not. A test double that keeps a
+         * client's passport in a public array would put it in every failure dump
+         * and every assertion diff the suite ever prints.
+         */
+        return $this->next($task, 'media', [
+            'system' => $system,
+            'prompt' => $prompt,
+            'media_mimes' => array_column($media, 'mime'),
+            'media_count' => count($media),
+        ]);
     }
 
     public function credentialStatus(): array
