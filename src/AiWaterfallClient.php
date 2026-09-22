@@ -175,10 +175,63 @@ class AiWaterfallClient
         return $this->get('api/v1/credentials/status');
     }
 
-    /** Tokens, spend and savings. No argument means the combined estate view. */
+    /**
+     * Tokens, spend and savings, as the raw response. No argument means the
+     * combined estate view.
+     *
+     * Prefer {@see usageReport()} in product code: a typed carrier stops every
+     * caller indexing the same string keys and drifting when a key is renamed.
+     * This stays for anything that genuinely wants the untouched payload.
+     */
     public function usage(array $query = []): array
     {
         return $this->get('api/v1/usage', $query);
+    }
+
+    /**
+     * The same figures, typed.
+     *
+     * ⚠ THE SERVICE COMPUTES, THE PRODUCT READS. This is the single source of
+     * truth for "what did AI cost": the service owns the rates, the credential
+     * TIER that served each call, and therefore the only correct answer. A
+     * product cannot know the tier and so cannot price its own calls - Portify
+     * tried, and its ledger reported $114.71 of spend from free providers that
+     * never charged a penny.
+     *
+     * ⚠ NO ARGUMENT IS THE ESTATE VIEW. `['product' => 'portify']` narrows it.
+     * One shape answers both questions, because two shapes are two places for
+     * the same figure to drift.
+     *
+     * @param  array<string,mixed>  $query  product, task, provider, from, to
+     */
+    public function usageReport(array $query = []): AiUsageReport
+    {
+        return AiUsageReport::fromArray($this->usage($query));
+    }
+
+    /**
+     * This product's own usage, without it having to know its own name.
+     *
+     * ⚠ THE PRODUCT NAME COMES FROM THE TRUST KEY, NOT FROM CONFIG. A product
+     * that spells its own name in a query can spell it wrong - and `finance` vs
+     * `finance-suite` has already been exactly that trap in this estate. The
+     * service resolves the caller from the key it authenticated, so asking it
+     * "who am I" cannot disagree with who it just decided you were.
+     *
+     * @param  array<string,mixed>  $query  additional filters: task, from, to
+     */
+    public function myUsageReport(array $query = []): AiUsageReport
+    {
+        $product = (string) ($this->get('api/v1/whoami')['product'] ?? '');
+
+        if ($product === '') {
+            throw new AiUnavailableException(
+                'ai-service did not name this caller, so its own usage cannot be scoped. '
+                .'Use usageReport(["product" => ...]) if you must name it yourself.'
+            );
+        }
+
+        return $this->usageReport($query + ['product' => $product]);
     }
 
     /** Is the service reachable at all? Never throws; for health surfaces. */
