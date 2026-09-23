@@ -157,6 +157,54 @@ class UsageReportTest extends TestCase
         $this->client($this->json(200, []))->myUsageReport();
     }
 
+    /**
+     * ⚠ A CACHE FAULT MUST NOT BECOME A REPORTING OUTAGE. This package runs in
+     * four products with different cache drivers. There is no container in this
+     * test process, so the Cache facade throws - which is exactly the condition
+     * being asserted: a TTL still returns a correct report by falling through to
+     * a direct fetch.
+     *
+     * One misconfigured store should cost speed, never the answer.
+     */
+    public function test_a_ttl_still_reports_when_the_cache_is_unavailable(): void
+    {
+        $report = $this->client($this->json(200, $this->payload()))
+            ->usageReport([], cacheSeconds: 300);
+
+        $this->assertSame(420, $report->calls, 'a broken cache swallowed the report');
+    }
+
+    /** No TTL means a fresh read every time, which is right for a CLI. */
+    public function test_without_a_ttl_each_call_fetches(): void
+    {
+        $client = $this->client(
+            $this->json(200, $this->payload()),
+            $this->json(200, $this->payload(['totals' => ['calls' => 999]])),
+        );
+
+        $this->assertSame(420, $client->usageReport()->calls);
+        $this->assertSame(999, $client->usageReport()->calls,
+            'the second call did not reach the service, so a CLI would show stale figures');
+    }
+
+    /**
+     * ⚠ THE QUERY IS PART OF THE CACHE KEY. Two windows or product filters are
+     * two different answers; sharing a key would serve the estate total to a
+     * caller that asked about one product - a wrong number with total
+     * confidence. Asserted through behaviour: differing queries must not
+     * collide.
+     */
+    public function test_different_queries_do_not_share_an_answer(): void
+    {
+        $client = $this->client(
+            $this->json(200, $this->payload(['totals' => ['calls' => 10]])),
+            $this->json(200, $this->payload(['totals' => ['calls' => 20]])),
+        );
+
+        $this->assertSame(10, $client->usageReport(['product' => 'portify'], cacheSeconds: 300)->calls);
+        $this->assertSame(20, $client->usageReport(['product' => 'mploynow'], cacheSeconds: 300)->calls);
+    }
+
     /** The untouched payload stays reachable for anything the DTO omits. */
     public function test_the_raw_payload_is_preserved(): void
     {

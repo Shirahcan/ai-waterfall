@@ -202,11 +202,76 @@ class AiWaterfallClient
      * One shape answers both questions, because two shapes are two places for
      * the same figure to drift.
      *
+     * ⚠ CACHING IS OPT-IN AND STALENESS IS VISIBLE. A cached report carries the
+     * `to` timestamp from the moment it was FETCHED, not the moment it is read,
+     * so a surface showing it is showing its own as-of date without needing a
+     * separate "cached at" field to be plumbed and kept honest.
+     *
+     * Use a TTL for anything a user loads repeatedly - a dashboard hitting the
+     * service on every page render turns a reporting call into traffic. Leave it
+     * null for a CLI or a one-off, where a fresh read costs nothing.
+     *
      * @param  array<string,mixed>  $query  product, task, provider, from, to
+     * @param  int|null  $cacheSeconds  null fetches every time
      */
-    public function usageReport(array $query = []): AiUsageReport
+    public function usageReport(array $query = [], ?int $cacheSeconds = null): AiUsageReport
     {
-        return AiUsageReport::fromArray($this->usage($query));
+        if ($cacheSeconds === null || $cacheSeconds <= 0) {
+            return AiUsageReport::fromArray($this->usage($query));
+        }
+
+        return AiUsageReport::fromArray(
+            $this->remember($this->usageCacheKey($query), $cacheSeconds, fn () => $this->usage($query))
+        );
+    }
+
+    /**
+     * Cache read-through that FAILS OPEN.
+     *
+     * ⚠ A CACHE FAULT MUST NOT BECOME A REPORTING OUTAGE. This package runs in
+     * four products with different cache drivers, and one misconfigured store
+     * should degrade to a slower correct answer, never to no answer. Any
+     * throwable from the cache falls through to a direct fetch.
+     *
+     * @param  callable():array<string,mixed>  $fetch
+     * @return array<string,mixed>
+     */
+    private function remember(string $key, int $seconds, callable $fetch): array
+    {
+        try {
+            if (! class_exists(\Illuminate\Support\Facades\Cache::class)) {
+                return $fetch();
+            }
+
+            $cached = \Illuminate\Support\Facades\Cache::get($key);
+
+            if (is_array($cached)) {
+                return $cached;
+            }
+
+            $fresh = $fetch();
+
+            \Illuminate\Support\Facades\Cache::put($key, $fresh, $seconds);
+
+            return $fresh;
+        } catch (Throwable) {
+            return $fetch();
+        }
+    }
+
+    /**
+     * ⚠ THE QUERY IS PART OF THE KEY. Two different windows or product filters
+     * are two different answers, and sharing one key would serve the estate
+     * total to a caller that asked for one product - a wrong number presented
+     * with total confidence.
+     *
+     * @param  array<string,mixed>  $query
+     */
+    private function usageCacheKey(array $query): string
+    {
+        ksort($query);
+
+        return 'ai_waterfall:usage:'.md5((string) json_encode($query));
     }
 
     /**
@@ -219,8 +284,9 @@ class AiWaterfallClient
      * "who am I" cannot disagree with who it just decided you were.
      *
      * @param  array<string,mixed>  $query  additional filters: task, from, to
+     * @param  int|null  $cacheSeconds  null fetches every time
      */
-    public function myUsageReport(array $query = []): AiUsageReport
+    public function myUsageReport(array $query = [], ?int $cacheSeconds = null): AiUsageReport
     {
         $product = (string) ($this->get('api/v1/whoami')['product'] ?? '');
 
@@ -231,7 +297,7 @@ class AiWaterfallClient
             );
         }
 
-        return $this->usageReport($query + ['product' => $product]);
+        return $this->usageReport($query + ['product' => $product], $cacheSeconds);
     }
 
     /** Is the service reachable at all? Never throws; for health surfaces. */
