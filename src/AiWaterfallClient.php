@@ -170,6 +170,30 @@ class AiWaterfallClient
     }
 
     /** The estate's credential picture, including the shared bench. */
+    /**
+     * Which models are usable right now, as a typed report.
+     *
+     * ⚠ PREFER THIS OVER credentialStatus(). The raw array leaves every product
+     * to work out for itself whether a rung is usable, and three mechanisms can
+     * take one out of rotation - a rate-limit bench, an open circuit, a learned
+     * prompt-size ceiling. Four products deriving that independently is four
+     * chances to disagree about one credential.
+     *
+     * Cached like the usage report and for the same reason: a status tile on a
+     * dashboard should not put the service under load on every page render. The
+     * TTL is short by default because a bench can clear at any moment.
+     */
+    public function modelStatus(?int $cacheSeconds = 30): AiModelStatus
+    {
+        if ($cacheSeconds === null || $cacheSeconds <= 0) {
+            return AiModelStatus::fromArray($this->credentialStatus());
+        }
+
+        return AiModelStatus::fromArray(
+            $this->remember('ai_waterfall:model_status', $cacheSeconds, fn () => $this->credentialStatus())
+        );
+    }
+
     public function credentialStatus(): array
     {
         return $this->get('api/v1/credentials/status');
