@@ -76,6 +76,216 @@ class AiWaterfallClient
     }
 
     /**
+     * The same generation, streamed token by token.
+     *
+     * ⚠ THIS EXISTS SO NOBODY HAND-ROLLS IT. A product that wants streaming and
+     * finds no method here will reach for the loopback URL directly, and in
+     * doing so re-implement the trust key, the base URL, the product identity,
+     * the socket timeouts and the error translation - all five of which live in
+     * this class precisely so there is ONE of each. The moment two callers reach
+     * the service two different ways, every future change to the wire has two
+     * homes and they drift. If streaming needs something this method lacks, add
+     * it HERE.
+     *
+     * ⚠ `$field` IS THE COMMON CASE, NOT THE EXCEPTION. Almost every AI call on
+     * this estate asks for JSON and reads one key out of it - Porter's composer
+     * says `Return ONLY JSON: {"answer": string}`. Pass `field: 'answer'` and the
+     * service streams the characters of that value as they are generated, rather
+     * than streaming `{"ans`. Omit it only when the whole output is prose.
+     *
+     * ⚠ THE RETURNED GENERATOR DRIVES THE SOCKET. Nothing is read until it is
+     * iterated, and abandoning it mid-way leaves the request open until the
+     * connection is collected - call {@see cancelStream()} if you stop early,
+     * which is what makes a stop REAL rather than a disconnect the provider
+     * never hears about.
+     *
+     * @param  ?callable(string $streamId): void  $onOpen  Receives the stream id
+     *   the moment it arrives, so a cancel is possible from the very next tick
+     *   rather than only after the first token.
+     * @return iterable<AiStreamEvent>
+     *
+     * @throws AiUnavailableException When the service is unreachable, refuses
+     *   the request, or the stream ends without a terminal event.
+     */
+    public function generateStream(
+        string $task,
+        string $system,
+        string $prompt,
+        ?string $field = null,
+        ?callable $onOpen = null,
+    ): iterable {
+        $body = array_filter([
+            'task'                 => $task,
+            'system'               => $system,
+            'prompt'               => $prompt,
+            'field'                => $field,
+            'budget_seconds'       => $this->budgetSeconds,
+            'per_provider_timeout' => $this->perProviderTimeout,
+        ], fn ($v) => $v !== null && $v !== []);
+
+        try {
+            $response = $this->http->post('api/v1/generate/stream', [
+                'headers'     => $this->headers() + ['Accept' => 'text/event-stream'],
+                'json'        => $body,
+                'http_errors' => false,
+                /*
+                 * ⚠ BOTH OF THESE, OR IT IS NOT A STREAM. `stream => true` stops
+                 * Guzzle buffering the whole body before returning; `timeout => 0`
+                 * stops the socket being cut while the stream is legitimately open.
+                 * A stream is bounded by its own terminal event and by the caller
+                 * cancelling, never by a fixed wall clock measured from the start.
+                 */
+                'stream'      => true,
+                'timeout'     => 0,
+                'read_timeout' => $this->timeout,
+            ]);
+        } catch (Throwable $e) {
+            throw new AiUnavailableException('ai-service is unreachable: '.$e->getMessage(), previous: $e);
+        }
+
+        $status = $response->getStatusCode();
+
+        if ($status < 200 || $status >= 300) {
+            // A refusal arrives as ordinary JSON, not as SSE.
+            $decoded = json_decode((string) $response->getBody(), true) ?: [];
+
+            throw $this->errorFor($status, $decoded);
+        }
+
+        yield from $this->readEvents($response->getBody(), $onOpen);
+    }
+
+    /**
+     * Stop a stream at the provider, not just at this socket.
+     *
+     * ⚠ HANGING UP IS NOT STOPPING. Dropping the connection leaves the provider
+     * call running to completion and billed - the work is done, nobody reads it,
+     * and the money is spent anyway. This tells the service to stop, which is the
+     * difference between a Stop button that means something and one that only
+     * changes what the user can see.
+     *
+     * Safe to call for a stream that has already finished; that is a `false`, not
+     * an error, so a fire-and-forget cancel on an already-complete turn is fine.
+     */
+    public function cancelStream(string $streamId): bool
+    {
+        try {
+            $response = $this->http->delete('api/v1/generate/stream/'.rawurlencode($streamId), [
+                'headers'     => $this->headers(),
+                'http_errors' => false,
+                'timeout'     => 5,
+            ]);
+        } catch (Throwable) {
+            /*
+             * ⚠ A FAILED CANCEL MUST NOT PROPAGATE. The caller has already told
+             * its user the turn is stopped; throwing here would either resurrect
+             * a spinner or surface an error for something the user did on
+             * purpose. Report false and let the stream's own terminal event or
+             * the dropped socket end it.
+             */
+            return false;
+        }
+
+        $decoded = json_decode((string) $response->getBody(), true) ?: [];
+
+        return (bool) ($decoded['cancelled'] ?? false);
+    }
+
+    /**
+     * Parse an SSE body into typed events.
+     *
+     * ⚠ FRAMES SPLIT ACROSS CHUNKS, AND A PARSER THAT ASSUMES OTHERWISE WORKS ON
+     * LOCALHOST AND CORRUPTS ON A REAL NETWORK. `data: {"te` and `xt":"hi"}`
+     * routinely arrive as two reads. So bytes are buffered until a blank line
+     * terminates a frame, never parsed per chunk.
+     *
+     * @return iterable<AiStreamEvent>
+     */
+    private function readEvents(mixed $stream, ?callable $onOpen): iterable
+    {
+        $buffer = '';
+        $sawTerminal = false;
+
+        while (! $stream->eof()) {
+            $chunk = $stream->read(8192);
+
+            if ($chunk === '') {
+                continue;
+            }
+
+            $buffer .= $chunk;
+
+            // Normalise CRLF so a proxy that rewrites line endings cannot hide a
+            // frame boundary from the split below.
+            $buffer = str_replace("\r\n", "\n", $buffer);
+
+            while (($cut = strpos($buffer, "\n\n")) !== false) {
+                $frame = substr($buffer, 0, $cut);
+                $buffer = substr($buffer, $cut + 2);
+
+                $event = $this->parseFrame($frame);
+
+                if ($event === null) {
+                    continue;
+                }
+
+                if ($event->type === AiStreamEvent::OPEN && $onOpen !== null) {
+                    $id = $event->streamId();
+                    if ($id !== null) {
+                        $onOpen($id);
+                    }
+                }
+
+                yield $event;
+
+                if ($event->isTerminal()) {
+                    $sawTerminal = true;
+
+                    return;
+                }
+            }
+        }
+
+        if (! $sawTerminal) {
+            /*
+             * ⚠ A STREAM THAT JUST STOPS IS A FAILURE, NOT A SUCCESS. Without
+             * this the caller sees the tokens it already had, no error, and a
+             * truncated half-answer that reads as finished prose - and acts on
+             * it. Ending without `done` / `cancelled` / `error` means the
+             * connection died mid-answer, and that has to be said out loud.
+             */
+            throw new AiUnavailableException('The stream ended without completing.');
+        }
+    }
+
+    private function parseFrame(string $frame): ?AiStreamEvent
+    {
+        $type = null;
+        $data = '';
+
+        foreach (explode("\n", $frame) as $line) {
+            if (str_starts_with($line, ':')) {
+                continue; // a keep-alive comment
+            }
+
+            if (str_starts_with($line, 'event:')) {
+                $type = trim(substr($line, 6));
+            } elseif (str_starts_with($line, 'data:')) {
+                // Multiple data: lines concatenate, per the SSE spec.
+                $data .= ($data === '' ? '' : "\n").trim(substr($line, 5));
+            }
+        }
+
+        if ($type === null || $type === '') {
+            return null;
+        }
+
+        $decoded = $data === '' ? [] : (json_decode($data, true) ?: []);
+
+        return new AiStreamEvent($type, is_array($decoded) ? $decoded : []);
+    }
+
+    /**
      * A multi-turn conversation with YOUR JSON schema enforced.
      *
      * This is how a caller keeps a structured, stateful exchange - Porter's intake
@@ -379,7 +589,22 @@ class AiWaterfallClient
             return AiResult::fromArray($decoded);
         }
 
-        throw match ($decoded['error'] ?? null) {
+        throw $this->errorFor($status, $decoded);
+    }
+
+    /**
+     * Translate a service refusal into the exception its caller already handles.
+     *
+     * ⚠ ONE TRANSLATION, SHARED BY THE BUFFERED AND STREAMING PATHS. This used to
+     * live inline in `call()`; the moment `generateStream()` needed the same
+     * mapping it became a fact with two homes, and the two would have drifted the
+     * first time a new `error` code was added to the service.
+     *
+     * @param  array<string, mixed>  $decoded
+     */
+    private function errorFor(int $status, array $decoded): Throwable
+    {
+        return match ($decoded['error'] ?? null) {
             // Distinct on purpose: "raise the cap or find the loop" is a different
             // job from "the providers are down", and a caller that cannot tell them
             // apart sends an operator to the wrong place.

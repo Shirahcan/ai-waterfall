@@ -77,6 +77,76 @@ class FakeAiWaterfall extends AiWaterfallClient
         return $this->next($task, 'text', $prompt);
     }
 
+    /**
+     * Events the next `generateStream()` will yield.
+     *
+     * ⚠ QUEUE THE EVENTS, NOT THE FINISHED TEXT. A fake that only let a test say
+     * "the answer is X" would make every consumer look correct, because the two
+     * things that actually go wrong in a stream cannot be expressed: a `discard`
+     * after partial output, and a stream that ends with no terminal event. Both
+     * are the defects worth testing for, so both must be queueable.
+     *
+     * @var array<int, AiStreamEvent>
+     */
+    private array $streamEvents = [];
+
+    /** @var array<int, string> Stream ids this fake was asked to cancel. */
+    public array $cancelledStreams = [];
+
+    /** Convenience: tokens plus the terminal `done`, the ordinary happy path. */
+    public function queueStreamText(string $text, string $streamId = 'stream-1'): static
+    {
+        $this->streamEvents = [new AiStreamEvent(AiStreamEvent::OPEN, ['stream_id' => $streamId])];
+
+        foreach (str_split($text, 8) as $chunk) {
+            $this->streamEvents[] = new AiStreamEvent(AiStreamEvent::TOKEN, ['text' => $chunk]);
+        }
+
+        $this->streamEvents[] = new AiStreamEvent(AiStreamEvent::DONE, ['provider' => 'fake', 'model' => 'fake']);
+
+        return $this;
+    }
+
+    /** @param  array<int, AiStreamEvent>  $events */
+    public function queueStreamEvents(array $events): static
+    {
+        $this->streamEvents = $events;
+
+        return $this;
+    }
+
+    /** @return iterable<AiStreamEvent> */
+    public function generateStream(
+        string $task,
+        string $system,
+        string $prompt,
+        ?string $field = null,
+        ?callable $onOpen = null,
+    ): iterable {
+        $this->calls[] = ['task' => $task, 'mode' => 'stream', 'payload' => $prompt];
+
+        $events = $this->streamEvents;
+        $this->streamEvents = [];
+
+        foreach ($events as $event) {
+            if ($event->type === AiStreamEvent::OPEN && $onOpen !== null) {
+                $id = $event->streamId();
+                if ($id !== null) {
+                    $onOpen($id);
+                }
+            }
+
+            yield $event;
+        }
+    }
+
+    public function cancelStream(string $streamId): bool
+    {
+        $this->cancelledStreams[] = $streamId;
+
+        return true;
+    }
+
     public function generateStructured(
         string $task,
         string $system,
