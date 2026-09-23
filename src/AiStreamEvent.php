@@ -56,6 +56,26 @@ final class AiStreamEvent
         return is_string($text) ? $text : '';
     }
 
+    /**
+     * The FULL decoded document, on a `done` event of a JSON generation.
+     *
+     * ⚠ THE STREAMED FIELD IS NOT THE WHOLE ANSWER, and assuming it is forces
+     * the caller to pay twice. Almost every AI call on this estate asks for a
+     * JSON object with several keys and streams only the one a human reads -
+     * Porter's classifier returns the conversational reply alongside the intent,
+     * the matched keys and the actions it wants to take. A caller given only the
+     * prose has to re-run the call blocking to get the structure, which costs
+     * more than never streaming at all.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function document(): ?array
+    {
+        $data = $this->data['data'] ?? null;
+
+        return is_array($data) && $data !== [] ? $data : null;
+    }
+
     public function streamId(): ?string
     {
         $id = $this->data['stream_id'] ?? null;

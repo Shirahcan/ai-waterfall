@@ -170,6 +170,48 @@ class StreamTest extends TestCase
         $this->drain($client->generateStream('t', 's', 'p'));
     }
 
+    /**
+     * ⚠ THE STREAMED FIELD IS NOT THE WHOLE ANSWER. Porter's classifier
+     * returns the conversational reply alongside the intent, the matched keys
+     * and the actions it wants. A caller given only the prose must re-run the
+     * call blocking to get the structure - which costs more than never
+     * streaming at all - so `done` carries the decoded document.
+     */
+    public function test_done_carries_the_whole_decoded_document(): void
+    {
+        $client = $this->client($this->sse(
+            $this->frame('open', ['stream_id' => 'abc']),
+            $this->frame('token', ['text' => 'Sure, here you go.']),
+            $this->frame('done', [
+                'provider' => 'groq',
+                'model' => 'x',
+                'data' => ['answer' => 'Sure, here you go.', 'intent' => 'read', 'keys' => ['cases.count']],
+            ]),
+        ));
+
+        $events = $this->drain($client->generateStream('chat.classify', 's', 'p', 'answer'));
+        $done = end($events);
+
+        $this->assertSame(AiStreamEvent::DONE, $done->type);
+        $this->assertSame('read', $done->document()['intent'] ?? null,
+            'the structure alongside the prose was dropped, so the caller must pay for a second blocking call');
+        $this->assertSame(['cases.count'], $done->document()['keys'] ?? null);
+    }
+
+    /** A plain-text generation has no document, and must say so rather than guess. */
+    public function test_a_text_stream_reports_no_document(): void
+    {
+        $client = $this->client($this->sse(
+            $this->frame('open', ['stream_id' => 'abc']),
+            $this->frame('token', ['text' => 'hi']),
+            $this->frame('done', ['provider' => 'groq', 'model' => 'x']),
+        ));
+
+        $events = $this->drain($client->generateStream('t', 's', 'p'));
+        $done = end($events);
+        $this->assertNull($done->document());
+    }
+
     public function test_cancel_reports_whether_the_service_stopped_it(): void
     {
         $client = $this->client(new Response(200, [], json_encode(['cancelled' => true])));
