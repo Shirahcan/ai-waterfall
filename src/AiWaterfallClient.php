@@ -379,6 +379,55 @@ class AiWaterfallClient
         ]);
     }
 
+    /**
+     * Text in, vector out, from the estate's ONE embedding model.
+     *
+     * ⚠ THE SERVICE CHOOSES THE MODEL, NOT YOU. The result names it; keep that
+     * name beside every stored vector and rebuild your index when it changes.
+     * There is deliberately no `$model` parameter: a product that picks its own
+     * embedding model has an opinion about routing, which is the leak this
+     * package exists to prevent.
+     *
+     * The input is REFUSED (422, surfaced as AiUnavailableException), not
+     * truncated, when it exceeds the service's limit. Where to cut a long
+     * document is your decision.
+     *
+     * @throws AiUnavailableException|AllProvidersFailedException|AiOverBudgetException|NoCompliantCredentialException
+     */
+    public function embed(string $task, string $text, bool $sensitive = false): AiEmbedding
+    {
+        $body = array_filter([
+            'task'           => $task,
+            'input'          => $text,
+            'sensitive'      => $sensitive ?: null,
+            'budget_seconds' => $this->budgetSeconds,
+        ], fn ($v) => $v !== null);
+
+        $options = [];
+        if ($this->budgetSeconds !== null) {
+            $options['timeout'] = $this->budgetSeconds + 15;
+        }
+
+        try {
+            $response = $this->http->post('api/v1/embed', $options + [
+                'headers'     => $this->headers(),
+                'json'        => $body,
+                'http_errors' => false,
+            ]);
+        } catch (Throwable $e) {
+            throw new AiUnavailableException('ai-service is unreachable: '.$e->getMessage(), previous: $e);
+        }
+
+        $status  = $response->getStatusCode();
+        $decoded = json_decode((string) $response->getBody(), true) ?: [];
+
+        if ($status >= 200 && $status < 300) {
+            return AiEmbedding::fromArray($decoded);
+        }
+
+        throw $this->errorFor($status, $decoded);
+    }
+
     /** The estate's credential picture, including the shared bench. */
     /**
      * Which models are usable right now, as a typed report.

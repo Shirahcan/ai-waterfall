@@ -183,6 +183,29 @@ class FakeAiWaterfall extends AiWaterfallClient
         ]);
     }
 
+    /**
+     * Queue a plain vector (model "fake-embedding"), an AiEmbedding, or a
+     * Throwable, in the same queue as every other call.
+     */
+    public function embed(string $task, string $text, bool $sensitive = false): AiEmbedding
+    {
+        $this->calls[] = ['task' => $task, 'mode' => 'embed', 'payload' => ['chars' => mb_strlen($text), 'sensitive' => $sensitive]];
+
+        if ($this->queue === []) {
+            throw new AiUnavailableException('FakeAiWaterfall queue exhausted for task ['.$task.']');
+        }
+
+        $next = array_shift($this->queue);
+
+        if ($next instanceof Throwable) {
+            throw $next;
+        }
+
+        return $next instanceof AiEmbedding
+            ? $next
+            : new AiEmbedding(vector: array_map('floatval', (array) $next), model: 'fake-embedding', provider: 'fake');
+    }
+
     public function credentialStatus(): array
     {
         return ['credentials' => [], 'benched' => 0];
