@@ -98,6 +98,40 @@ estate's internal network from outside. The reason is in the service's log.
 generation walk. Keys live in the vault, not in your `.env`, and the bench is shared - so the
 first exhausted search key protects every product.
 
+### A voice, and whose question it was
+
+```php
+$ai->withPersona('porter', 'consultant')     // the stored voice, and for whom
+   ->withCorrelation(['_key' => 'case:9e3f', 'user_id' => $id])
+   ->generateJson('chat.answer', $system, $prompt);
+
+$ai->personas()->publish('porter', 'Porter', '<the writing rules>', 'consultant');
+$ai->personas()->all();                      // every version, newest first
+$ai->personas()->rollBackTo($id);
+```
+
+⚠ **The caller NAMES the voice; the service OWNS the text.** The product knows which
+assistant is talking and to which role; the service holds the words so the person who
+owns them can edit them instead of waiting for a deploy.
+
+⚠ **Set the audience wherever the voice genuinely differs by role.** Role-blind persona
+is the recurring defect: a practising consultant was told *"I am software, not a person,
+and not your consultant"* - correct for a client, wrong for the professional who IS the
+consultant.
+
+⚠ **Do not set a persona on an extraction or a classification.** Those want a
+machine-readable answer; house style there buys nothing and costs tokens on every call.
+
+⚠ **The correlation bag is IDENTIFIERS, not content.** The service caps it at ten keys
+of eighty characters and REFUSES anything longer rather than truncating, because a
+silently shortened identifier is a wrong identifier. It exists because the usage table
+could not say whose question a row was, which is why Portify kept a second ledger with
+its own cost calculator and its own copy of the rate table.
+
+⚠ **,  and  all CLONE.** The client is a
+singleton: mutating in place would put one user's correlation, or one audience's voice,
+into the next request handled by the same worker.
+
 ## Failures are typed, because the remedies differ
 
 | Exception | Means | What to do |
