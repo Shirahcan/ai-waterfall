@@ -128,7 +128,7 @@ silently shortened identifier is a wrong identifier. It exists because the usage
 could not say whose question a row was, which is why Portify kept a second ledger with
 its own cost calculator and its own copy of the rate table.
 
-⚠ **,  and  all CLONE.** The client is a
+⚠ **`withBudget`, `withCorrelation` and `withPersona` all CLONE.** The client is a
 singleton: mutating in place would put one user's correlation, or one audience's voice,
 into the next request handled by the same worker.
 
