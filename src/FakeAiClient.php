@@ -25,11 +25,44 @@ class FakeAiClient extends AiClient
     /** @var array<int, mixed> */
     private array $queue = [];
 
-    /** @var array<int, array{task: string, mode: string, payload: mixed}> */
-    public array $calls = [];
+    /**
+     * The shared record of what this fake was asked to do.
+     *
+     * ⚠ AN OBJECT, BECAUSE `withBudget()` AND `withCorrelation()` CLONE. A
+     * clone copies arrays by value, so every call recorded after a `with*()`
+     * landed on the clone and was invisible from the instance the test held -
+     * and it failed as a FALSE NEGATIVE: "the AI was never called" about working
+     * code, and an unconditional pass for any test asserting it was NOT called.
+     * An object is shared by handle, so the log is the same log.
+     */
+    public FakeCallLog $log;
+
+    /**
+     * @deprecated Read {@see $log}. Kept so existing assertions on `->calls`
+     *   keep working, and it now returns the SHARED log rather than this
+     *   instance's private copy.
+     *
+     * @return array<int, array{task: string, mode: string, payload: mixed}>
+     */
+    public function __get(string $name): mixed
+    {
+        return match ($name) {
+            'calls'    => $this->log->calls,
+            'searches' => $this->log->searches,
+            default    => null,
+        };
+    }
+
+    /** The correlation bag of the last call, or null if there was none. */
+    public function correlation(): array
+    {
+        return $this->log->correlation ?? [];
+    }
 
     public function __construct()
     {
+        $this->log = new FakeCallLog();
+
         // Deliberately does NOT call parent::__construct: there is no base URL and
         // no trust key, and a fake that needed either would defeat its own purpose.
     }
@@ -123,7 +156,7 @@ class FakeAiClient extends AiClient
         ?string $field = null,
         ?callable $onOpen = null,
     ): iterable {
-        $this->calls[] = ['task' => $task, 'mode' => 'stream', 'payload' => $prompt];
+        $this->log->calls[] = ['task' => $task, 'mode' => 'stream', 'payload' => $prompt];
 
         $events = $this->streamEvents;
         $this->streamEvents = [];
@@ -189,7 +222,7 @@ class FakeAiClient extends AiClient
      */
     public function embed(string $task, string $text, bool $sensitive = false): AiEmbedding
     {
-        $this->calls[] = ['task' => $task, 'mode' => 'embed', 'payload' => ['chars' => mb_strlen($text), 'sensitive' => $sensitive]];
+        $this->log->calls[] = ['task' => $task, 'mode' => 'embed', 'payload' => ['chars' => mb_strlen($text), 'sensitive' => $sensitive]];
 
         if ($this->queue === []) {
             throw new AiUnavailableException('FakeAiClient queue exhausted for task ['.$task.']');
@@ -213,7 +246,7 @@ class FakeAiClient extends AiClient
 
     public function usage(array $query = []): array
     {
-        return ['totals' => ['calls' => count($this->calls)]];
+        return ['totals' => ['calls' => count($this->log->calls)]];
     }
 
     /*
@@ -321,8 +354,7 @@ class FakeAiClient extends AiClient
     /** @var array<string, array<string, mixed>|null> */
     private array $pages = [];
 
-    /** @var array<int, array{query: string, task: string}> */
-    public array $searches = [];
+
 
     /** @param array<int, array<string, mixed>> $results */
     public function queueSearch(array $results, string $provider = 'fake-search'): static
@@ -363,13 +395,28 @@ class FakeAiClient extends AiClient
     }
 
     /**
+     * Record the bag on the SHARED log, then behave exactly as the real client
+     * does by returning a clone.
+     *
+     * ⚠ RECORDED BEFORE THE CLONE, on purpose. Recording on the clone would
+     * reproduce the very defect FakeCallLog exists to fix: the test holds the
+     * original and would see nothing.
+     */
+    public function withCorrelation(array $correlation): static
+    {
+        $this->log->correlation = $correlation === [] ? null : $correlation;
+
+        return parent::withCorrelation($correlation);
+    }
+
+    /**
      * @internal for FakeAiResearch
      *
      * @return array<string, mixed>
      */
     public function nextSearch(string $task, string $query): array
     {
-        $this->searches[] = ['task' => $task, 'query' => $query];
+        $this->log->searches[] = ['task' => $task, 'query' => $query];
 
         if ($this->searchQueue === []) {
             // Same rule as the generation queue: an exhausted fake throws
@@ -403,7 +450,7 @@ class FakeAiClient extends AiClient
 
     private function next(string $task, string $mode, mixed $payload): AiResult
     {
-        $this->calls[] = ['task' => $task, 'mode' => $mode, 'payload' => $payload];
+        $this->log->calls[] = ['task' => $task, 'mode' => $mode, 'payload' => $payload];
 
         if ($this->queue === []) {
             /*

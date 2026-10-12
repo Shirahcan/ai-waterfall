@@ -60,6 +60,47 @@ class AiClient
         return $clone;
     }
 
+    /**
+     * The caller's own identifiers, recorded on every usage row this call makes.
+     *
+     * ⚠ WHY THE SERVICE NEEDS THIS AT ALL. `ai_usage` carried product, task,
+     * provider, model, tier, tokens, cost and outcome - but nothing saying WHOSE
+     * question a row was. So Portify kept a second ledger (11,853 rows against
+     * the service's 3,547) with its own cost calculator and its own copy of the
+     * rate table, purely to answer "what did this case cost to run". Two copies
+     * of a changeable fact is the defect shape this estate keeps paying for.
+     *
+     * ⚠ IDENTIFIERS, NOT CONTENT, AND THE SERVICE ENFORCES THAT. The service
+     * stores no prompts and no completions, deliberately - client documents and
+     * supplier invoices pass through it, and a usage table holding their text
+     * would be a second, unscanned copy of the estate's most sensitive data. The
+     * bag is capped at 10 keys of 80 characters, so a sentence does not fit. Put
+     * ids in it, never a question or a name.
+     *
+     * ⚠ `_key` IS THE ONE INDEXED VALUE, AND YOU CHOOSE IT. Only you know
+     * which of your ids is worth asking questions about later, and the service
+     * must not learn what a `case_id` means - the moment it does, it has an
+     * opinion about your domain.
+     *
+     * ⚠ A CLONE, LIKE withBudget(). The client is a singleton, so mutating in
+     * place would leak one user's correlation onto the next request handled by
+     * the same worker - which is worse than no correlation at all, because the
+     * row would be confidently attributed to the wrong person.
+     *
+     * @param  array<string, string>  $correlation  e.g.
+     *   `['_key' => 'case:9e3f', 'user_id' => '…', 'source' => 'web']`
+     */
+    public function withCorrelation(array $correlation): static
+    {
+        $clone = clone $this;
+        $clone->correlation = $correlation === [] ? null : $correlation;
+
+        return $clone;
+    }
+
+    /** @var array<string, string>|null */
+    private ?array $correlation = null;
+
     /** Forced-JSON generation from a system + user prompt. */
     public function generateJson(string $task, string $system, string $prompt, ?int $maxRepairs = null): AiResult
     {
@@ -120,6 +161,7 @@ class AiClient
             'prompt'               => $prompt,
             'field'                => $field,
             'budget_seconds'       => $this->budgetSeconds,
+            'correlation'          => $this->correlation,
             'per_provider_timeout' => $this->perProviderTimeout,
         ], fn ($v) => $v !== null && $v !== []);
 
@@ -401,6 +443,7 @@ class AiClient
             'input'          => $text,
             'sensitive'      => $sensitive ?: null,
             'budget_seconds' => $this->budgetSeconds,
+            'correlation'    => $this->correlation,
         ], fn ($v) => $v !== null);
 
         $options = [];
@@ -598,6 +641,7 @@ class AiClient
     private function call(array $body): AiResult
     {
         $body['budget_seconds']       = $this->budgetSeconds;
+        $body['correlation']          ??= $this->correlation;
         $body['per_provider_timeout'] = $this->perProviderTimeout;
 
         $body = array_filter($body, fn ($v) => $v !== null && $v !== []);
