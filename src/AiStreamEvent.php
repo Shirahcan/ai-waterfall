@@ -48,12 +48,49 @@ final class AiStreamEvent
         public readonly array $data = [],
     ) {}
 
-    /** The text of a TOKEN event; empty for anything else. */
+    /**
+     * The text of a TOKEN event; empty for anything else.
+     *
+     * ⚠ IT NOW ENFORCES THAT, AND IT DID NOT BEFORE. The docblock made this
+     * promise while the code read `data['text']` from whatever event it was
+     * given - and a `done` event carries the WHOLE answer in that field, so the
+     * obvious consumer shape
+     *
+     *     foreach ($events as $event) { $answer .= $event->text(); }
+     *
+     * produced the answer TWICE, concatenated, with no error. A consumer that
+     * trusted the documentation was the one that got it wrong, which is the
+     * worst direction for a trap to point.
+     *
+     * The full text of a finished answer is on the `done` event as
+     * `data['text']`, deliberately reachable but never by accident.
+     */
     public function text(): string
     {
+        if ($this->type !== self::TOKEN) {
+            return '';
+        }
+
         $text = $this->data['text'] ?? '';
 
         return is_string($text) ? $text : '';
+    }
+
+    /**
+     * The complete answer, on a terminal event.
+     *
+     * For the caller that did NOT accumulate tokens - a test, a log, a
+     * non-streaming consumer of a streamed call.
+     */
+    public function fullText(): ?string
+    {
+        if (! $this->isTerminal()) {
+            return null;
+        }
+
+        $text = $this->data['text'] ?? null;
+
+        return is_string($text) && $text !== '' ? $text : null;
     }
 
     /**

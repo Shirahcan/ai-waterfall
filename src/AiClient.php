@@ -835,6 +835,40 @@ class AiClient
     }
 
     /**
+     * One assistant turn: plan, use the product's own tools, answer.
+     *
+     * ⚠ THE LOOP RUNS HERE, IN THE PRODUCT'S PROCESS, AND THE TOOLS RUN HERE
+     * TOO. ai-service decides WHAT to do next; this product decides whether the
+     * viewer may do it and then does it. Letting the service drive the loop and
+     * call back would give the box that holds every AI provider key in the
+     * estate the ability to act AS A USER inside every product - and would give
+     * each product's permission model two enforcers.
+     *
+     * ⚠ THE PERSONA IS NAMED HERE AND OWNED BY THE SERVICE. Pass the key and
+     * the audience; the voice itself comes from the persona registry at the
+     * service's own choke point, so changing how an assistant sounds is a row,
+     * not a deploy.
+     *
+     * @param  string  $task  the usage-ledger task name for every step of the turn
+     */
+    public function assistant(
+        string $persona,
+        ?string $audience = null,
+        string $system = '',
+        string $task = 'assistant.turn',
+    ): Assistant\AssistantTurn {
+        return new Assistant\AssistantTurn(
+            // Persona and audience ride on a CLONE, like every other per-call
+            // setting here: the client is a singleton, and one audience's voice
+            // leaking into the next request would be a user hearing an answer
+            // written for somebody else's role.
+            $this->withPersona($persona, $audience),
+            $task,
+            $system,
+        );
+    }
+
+    /**
      * This product's knowledge SERVING INDEX in the service: sync it, prune it,
      * search it semantically.
      *

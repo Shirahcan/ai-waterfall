@@ -132,6 +132,76 @@ its own cost calculator and its own copy of the rate table.
 singleton: mutating in place would put one user's correlation, or one audience's voice,
 into the next request handled by the same worker.
 
+## An assistant: `$ai->assistant()`
+
+```php
+$catalog = new ToolCatalog([new AtlasQueryTool, new DraftEmailTool]);
+
+$answer = $ai->assistant('porter', 'consultant', 'You help a Canadian immigration consultant.')
+    ->withTools($catalog)
+    ->as($user)                      // every authorize() sees this
+    ->withKnowledge('consultant')    // ground the turn in the index
+    ->ask('what is outstanding on the Garcia file?');
+
+$answer->text;          $answer->toolsUsed();      // ['atlas_query']
+$answer->exhausted;     $answer->refusedTools();
+
+foreach ($ai->assistant('porter', 'client')->withTools($catalog)->as($user)->stream($question) as $event) {
+    if ($event->type === AiStreamEvent::TOKEN)   { echo $event->text(); }
+    if ($event->type === AiStreamEvent::DISCARD) { /* un-paint everything so far */ }
+}
+```
+
+A tool is four methods:
+
+```php
+class AtlasQueryTool implements ToolContract
+{
+    public function name(): string { return 'atlas_query'; }
+    public function description(): string { return 'Read the asker's own cases, clients and payments.'; }
+    public function schema(): array { return ['type' => 'object', 'properties' => [...]]; }
+    public function authorize(mixed $viewer, array $args): bool { return $viewer->canSee($args['case_id'] ?? null); }
+    public function run(array $args): mixed { return Atlas::query($args); }
+}
+```
+
+⚠ **The loop and the tools run in YOUR process, never in ai-service.** The service decides
+what to do next; your product decides whether this viewer may do it, and then does it. The
+alternative - the service driving the loop and calling back - is the tidier diagram and the
+wrong trade: it would give the box that holds every AI provider key in the estate the
+ability to act **as a user** inside every product, and would give your permission model two
+enforcers.
+
+⚠ **`authorize()` runs on EVERY step, with the actual arguments.** A loop can revisit a
+tool asking about a different case, and a check made once against the first arguments is
+not a check. A refused tool is never executed, and the model is told so it can answer
+without it - asserted, including the case where it asks twice with different arguments.
+
+⚠ **Every tool is DESCRIBED to the model, including ones the viewer cannot use.** A model
+that cannot see a tool cannot say "you would need X for that". Describing grants nothing;
+execution is where the refusal lives.
+
+⚠ **Read `exhausted`.** True means the loop ran out of steps or time, and `text` is then
+EMPTY on purpose - the model never decided to say anything, and presenting its last
+mid-thought as an answer is how an assistant states half a fact confidently. Run your
+deterministic path instead.
+
+⚠ **What a streamed turn costs**, because the three paths differ:
+
+| path | model calls | streamed by the provider |
+|---|---|---|
+| no tools registered | 1 | yes |
+| tools, none needed | 1 | no - the planner's text is replayed as tokens |
+| tools, some used | 2 + steps | yes, written from the tool results |
+
+The middle row replays rather than paying twice: the planner already wrote the answer and
+there is no new evidence a second call could write from. A replayed stream has **no stream
+id**, because there is nothing to cancel.
+
+⚠ **The persona is NAMED here and OWNED by the service.** Pass the key and the audience;
+the words come from the persona registry at the service's own choke point, so changing how
+an assistant sounds is a row, not a deploy.
+
 ## Knowledge: `$ai->knowledge()`
 
 ```php
