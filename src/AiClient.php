@@ -162,6 +162,8 @@ class AiClient
             'field'                => $field,
             'budget_seconds'       => $this->budgetSeconds,
             'correlation'          => $this->correlation,
+            'persona'              => $this->persona,
+            'audience'             => $this->personaAudience,
             'per_provider_timeout' => $this->perProviderTimeout,
         ], fn ($v) => $v !== null && $v !== []);
 
@@ -642,6 +644,8 @@ class AiClient
     {
         $body['budget_seconds']       = $this->budgetSeconds;
         $body['correlation']          ??= $this->correlation;
+        $body['persona']              ??= $this->persona;
+        $body['audience']             ??= $this->personaAudience;
         $body['per_provider_timeout'] = $this->perProviderTimeout;
 
         $body = array_filter($body, fn ($v) => $v !== null && $v !== []);
@@ -753,6 +757,45 @@ class AiClient
         return new AiResearch($this);
     }
 
+    /**
+     * The stored voice this call should speak in, and to whom.
+     *
+     * The CALLER names it; the SERVICE owns the text. That split is the point:
+     * the product knows which of its assistants is talking and to which role,
+     * and the service holds the words so the person who owns them can edit them
+     * rather than wait for a deploy.
+     *
+     * ⚠ AUDIENCE IS SEPARATE, BECAUSE ROLE-BLIND PERSONA IS THE RECURRING
+     * DEFECT. A practising consultant was told "I am software, not a person, and
+     * not your consultant" - correct for a client, wrong for the professional
+     * who IS the consultant. One voice for everybody is how that happens.
+     *
+     * ⚠ A CLONE, LIKE withBudget(). The client is a singleton, so mutating in
+     * place would put one audience voice into the next request handled by the
+     * same worker.
+     *
+     * ⚠ DO NOT SET IT FOR AN EXTRACTION OR A CLASSIFICATION. Those want a
+     * machine-readable answer; house style there buys nothing and costs tokens
+     * on every call.
+     */
+    public function withPersona(string $persona, ?string $audience = null): static
+    {
+        $clone = clone $this;
+        $clone->persona = $persona;
+        $clone->personaAudience = $audience;
+
+        return $clone;
+    }
+
+    private ?string $persona = null;
+    private ?string $personaAudience = null;
+
+    /** Manage this product stored voices. */
+    public function personas(): AiPersonas
+    {
+        return new AiPersonas($this);
+    }
+
     /** The caller's budget for the next call, for surfaces that forward it. */
     public function budgetSecondsOrNull(): ?float
     {
@@ -802,6 +845,65 @@ class AiClient
         }
 
         $status  = $response->getStatusCode();
+        $decoded = json_decode((string) $response->getBody(), true) ?: [];
+
+        if ($status >= 200 && $status < 300) {
+            return $decoded;
+        }
+
+        throw $this->errorFor($status, $decoded);
+    }
+
+    /**
+     * GET a JSON payload, with the same typed error mapping as postJson().
+     *
+     * ⚠ PUBLIC AND SHARED FOR THE SAME REASON postJson() IS: every typed
+     * failure this package promises is decided in errorFor(), and a sibling
+     * surface with its own try/catch would map them slightly differently - so a
+     * product four carefully distinct catch blocks would behave differently
+     * depending on which endpoint they came from.
+     *
+     * @return array<string, mixed>
+     */
+    public function getJson(string $path, array $query = []): array
+    {
+        try {
+            $response = $this->http->get($path, [
+                'headers' => $this->headers(),
+                'query' => $query,
+                'http_errors' => false,
+            ]);
+        } catch (Throwable $e) {
+            throw new AiUnavailableException('ai-service is unreachable: '.$e->getMessage(), previous: $e);
+        }
+
+        $status = $response->getStatusCode();
+        $decoded = json_decode((string) $response->getBody(), true) ?: [];
+
+        if ($status >= 200 && $status < 300) {
+            return $decoded;
+        }
+
+        throw $this->errorFor($status, $decoded);
+    }
+
+    /**
+     * DELETE and return the decoded payload.
+     *
+     * @return array<string, mixed>
+     */
+    public function deleteJson(string $path): array
+    {
+        try {
+            $response = $this->http->delete($path, [
+                'headers' => $this->headers(),
+                'http_errors' => false,
+            ]);
+        } catch (Throwable $e) {
+            throw new AiUnavailableException('ai-service is unreachable: '.$e->getMessage(), previous: $e);
+        }
+
+        $status = $response->getStatusCode();
         $decoded = json_decode((string) $response->getBody(), true) ?: [];
 
         if ($status >= 200 && $status < 300) {

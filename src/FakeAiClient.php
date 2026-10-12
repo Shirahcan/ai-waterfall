@@ -402,6 +402,45 @@ class FakeAiClient extends AiClient
      * reproduce the very defect FakeCallLog exists to fix: the test holds the
      * original and would see nothing.
      */
+    /**
+     * The personas this fake pretends the service holds.
+     *
+     * ⚠ ON THE SHARED LOG, like everything else here, because withPersona()
+     * and withBudget() clone. A persona published through a clone and then
+     * asserted on the original is exactly the false negative FakeCallLog
+     * exists to stop.
+     *
+     * @var array<int, array<string, mixed>>
+     */
+    private array $personas = [];
+
+    /** @param array<int, array<string, mixed>> $personas */
+    public function queuePersonas(array $personas): static
+    {
+        $this->personas = $personas;
+
+        return $this;
+    }
+
+    public function personas(): AiPersonas
+    {
+        return new FakeAiPersonas($this, $this->personas);
+    }
+
+    /** Which voice the LAST call asked to speak in, or null. */
+    public function persona(): ?array
+    {
+        return $this->log->persona;
+    }
+
+    public function withPersona(string $persona, ?string $audience = null): static
+    {
+        // Recorded BEFORE the clone, or the test holding the original sees nothing.
+        $this->log->persona = ['persona' => $persona, 'audience' => $audience];
+
+        return parent::withPersona($persona, $audience);
+    }
+
     public function withCorrelation(array $correlation): static
     {
         $this->log->correlation = $correlation === [] ? null : $correlation;

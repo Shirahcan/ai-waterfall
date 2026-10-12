@@ -45,4 +45,11 @@ class FakeCallLog
      * @var array<string, string>|null
      */
     public ?array $correlation = null;
+
+    /**
+     * The voice the last call asked to speak in, or null.
+     *
+     * @var array{persona: string, audience: ?string}|null
+     */
+    public ?array $persona = null;
 }
