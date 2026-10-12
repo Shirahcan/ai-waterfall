@@ -1,6 +1,6 @@
 <?php
 
-namespace Shirahcan\AiWaterfall;
+namespace Shirahcan\AiClient;
 
 /**
  * What the estate spent, what it avoided spending, and who did the spending.

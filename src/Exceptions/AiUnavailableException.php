@@ -1,6 +1,6 @@
 <?php
 
-namespace Shirahcan\AiWaterfall\Exceptions;
+namespace Shirahcan\AiClient\Exceptions;
 
 /**
  * The service could not be reached, or failed in a way with no better name.

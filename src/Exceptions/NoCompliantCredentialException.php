@@ -1,6 +1,6 @@
 <?php
 
-namespace Shirahcan\AiWaterfall\Exceptions;
+namespace Shirahcan\AiClient\Exceptions;
 
 /**
  * A SENSITIVE task, and no credential is cleared to serve it.

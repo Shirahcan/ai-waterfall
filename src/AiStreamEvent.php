@@ -1,6 +1,6 @@
 <?php
 
-namespace Shirahcan\AiWaterfall;
+namespace Shirahcan\AiClient;
 
 /**
  * One event from a token stream.

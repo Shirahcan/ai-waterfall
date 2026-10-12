@@ -1,26 +1,26 @@
 <?php
 
-namespace Shirahcan\AiWaterfall\Tests;
+namespace Shirahcan\AiClient\Tests;
 
 use GuzzleHttp\Client as Guzzle;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
-use Shirahcan\AiWaterfall\AiWaterfallClient;
-use Shirahcan\AiWaterfall\Exceptions\AiOverBudgetException;
-use Shirahcan\AiWaterfall\Exceptions\AiUnavailableException;
-use Shirahcan\AiWaterfall\Exceptions\AllProvidersFailedException;
-use Shirahcan\AiWaterfall\Exceptions\NoCompliantCredentialException;
-use Shirahcan\AiWaterfall\FakeAiWaterfall;
+use Shirahcan\AiClient\AiClient;
+use Shirahcan\AiClient\Exceptions\AiOverBudgetException;
+use Shirahcan\AiClient\Exceptions\AiUnavailableException;
+use Shirahcan\AiClient\Exceptions\AllProvidersFailedException;
+use Shirahcan\AiClient\Exceptions\NoCompliantCredentialException;
+use Shirahcan\AiClient\FakeAiClient;
 
 class ClientTest extends TestCase
 {
-    private function client(Response ...$responses): AiWaterfallClient
+    private function client(Response ...$responses): AiClient
     {
         $stack = HandlerStack::create(new MockHandler($responses));
 
-        return new AiWaterfallClient('http://127.0.0.1:8007', 'test-key', 60,
+        return new AiClient('http://127.0.0.1:8007', 'test-key', 60,
             new Guzzle(['handler' => $stack, 'base_uri' => 'http://127.0.0.1:8007/']));
     }
 
@@ -82,7 +82,7 @@ class ClientTest extends TestCase
 
     public function test_the_fake_serves_queued_results_without_a_service(): void
     {
-        $fake = (new FakeAiWaterfall())->queue(['action' => 'ask']);
+        $fake = (new FakeAiClient())->queue(['action' => 'ask']);
 
         $this->assertSame(['action' => 'ask'], $fake->generateJson('t', 's', 'p')->array());
         $this->assertSame('t', $fake->calls[0]['task']);
@@ -92,6 +92,6 @@ class ClientTest extends TestCase
     public function test_the_fake_throws_when_its_queue_is_empty(): void
     {
         $this->expectException(AiUnavailableException::class);
-        (new FakeAiWaterfall())->generateJson('t', 's', 'p');
+        (new FakeAiClient())->generateJson('t', 's', 'p');
     }
 }

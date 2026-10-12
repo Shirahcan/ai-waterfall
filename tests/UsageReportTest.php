@@ -1,15 +1,15 @@
 <?php
 
-namespace Shirahcan\AiWaterfall\Tests;
+namespace Shirahcan\AiClient\Tests;
 
 use GuzzleHttp\Client as Guzzle;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
-use Shirahcan\AiWaterfall\AiUsageReport;
-use Shirahcan\AiWaterfall\AiWaterfallClient;
-use Shirahcan\AiWaterfall\Exceptions\AiUnavailableException;
+use Shirahcan\AiClient\AiUsageReport;
+use Shirahcan\AiClient\AiClient;
+use Shirahcan\AiClient\Exceptions\AiUnavailableException;
 
 /**
  * Usage figures are READ from the service, never recomputed by a product.
@@ -22,11 +22,11 @@ use Shirahcan\AiWaterfall\Exceptions\AiUnavailableException;
  */
 class UsageReportTest extends TestCase
 {
-    private function client(Response ...$responses): AiWaterfallClient
+    private function client(Response ...$responses): AiClient
     {
         $stack = HandlerStack::create(new MockHandler($responses));
 
-        return new AiWaterfallClient('http://127.0.0.1:8007', 'test-key', 60,
+        return new AiClient('http://127.0.0.1:8007', 'test-key', 60,
             new Guzzle(['handler' => $stack, 'base_uri' => 'http://127.0.0.1:8007/']));
     }
 

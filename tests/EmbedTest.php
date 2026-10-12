@@ -1,6 +1,6 @@
 <?php
 
-namespace Shirahcan\AiWaterfall\Tests;
+namespace Shirahcan\AiClient\Tests;
 
 use GuzzleHttp\Client as Guzzle;
 use GuzzleHttp\Handler\MockHandler;
@@ -8,23 +8,23 @@ use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
-use Shirahcan\AiWaterfall\AiEmbedding;
-use Shirahcan\AiWaterfall\AiWaterfallClient;
-use Shirahcan\AiWaterfall\Exceptions\AiUnavailableException;
-use Shirahcan\AiWaterfall\Exceptions\AllProvidersFailedException;
-use Shirahcan\AiWaterfall\FakeAiWaterfall;
+use Shirahcan\AiClient\AiEmbedding;
+use Shirahcan\AiClient\AiClient;
+use Shirahcan\AiClient\Exceptions\AiUnavailableException;
+use Shirahcan\AiClient\Exceptions\AllProvidersFailedException;
+use Shirahcan\AiClient\FakeAiClient;
 
 class EmbedTest extends TestCase
 {
     /** @var array<int, array<string, mixed>> */
     private array $sent = [];
 
-    private function client(Response ...$responses): AiWaterfallClient
+    private function client(Response ...$responses): AiClient
     {
         $stack = HandlerStack::create(new MockHandler($responses));
         $stack->push(Middleware::history($this->sent));
 
-        return new AiWaterfallClient('http://127.0.0.1:8007', 'test-key', 60,
+        return new AiClient('http://127.0.0.1:8007', 'test-key', 60,
             new Guzzle(['handler' => $stack, 'base_uri' => 'http://127.0.0.1:8007/']));
     }
 
@@ -69,7 +69,7 @@ class EmbedTest extends TestCase
 
     public function test_the_fake_serves_a_queued_vector(): void
     {
-        $fake = (new FakeAiWaterfall())->queue([1, 0]);
+        $fake = (new FakeAiClient())->queue([1, 0]);
 
         $e = $fake->embed('knowledge.embed.document', 'abc');
 

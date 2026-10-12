@@ -1,6 +1,6 @@
 {
-    "name": "shirahcan/ai-waterfall",
-    "description": "Thin client for the Shirah estate's ai-service. Speaks to it over loopback; holds no provider keys of its own.",
+    "name": "shirahcan/ai-client",
+    "description": "The Shirah estate's one door to ai-service: generation, embeddings, streaming, web research, and the assistant harness. Speaks to it over loopback; holds no provider keys of its own, and must never learn how to.",
     "type": "library",
     "license": "proprietary",
     "require": {
@@ -13,18 +13,21 @@
     },
     "autoload": {
         "psr-4": {
-            "Shirahcan\\AiWaterfall\\": "src/"
-        }
+            "Shirahcan\\AiClient\\": "src/"
+        },
+        "files": [
+            "src/compat.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
-            "Shirahcan\\AiWaterfall\\Tests\\": "tests/"
+            "Shirahcan\\AiClient\\Tests\\": "tests/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "Shirahcan\\AiWaterfall\\AiWaterfallServiceProvider"
+                "Shirahcan\\AiClient\\AiClientServiceProvider"
             ]
         }
     },

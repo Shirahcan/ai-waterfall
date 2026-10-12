@@ -1,6 +1,6 @@
 <?php
 
-namespace Shirahcan\AiWaterfall;
+namespace Shirahcan\AiClient;
 
 /**
  * One vector, and the model that produced it.

@@ -1,6 +1,6 @@
 <?php
 
-namespace Shirahcan\AiWaterfall;
+namespace Shirahcan\AiClient;
 
 /**
  * One answer, plus the trail of what it took to get it.

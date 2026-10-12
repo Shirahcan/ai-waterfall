@@ -1,8 +1,8 @@
 <?php
 
-namespace Shirahcan\AiWaterfall;
+namespace Shirahcan\AiClient;
 
-use Shirahcan\AiWaterfall\Exceptions\AiUnavailableException;
+use Shirahcan\AiClient\Exceptions\AiUnavailableException;
 use Throwable;
 
 /**
@@ -20,7 +20,7 @@ use Throwable;
  *   $fake->queue(['action' => 'ask']);
  *   $fake->queueFailure(new AiUnavailableException('down'));
  */
-class FakeAiWaterfall extends AiWaterfallClient
+class FakeAiClient extends AiClient
 {
     /** @var array<int, mixed> */
     private array $queue = [];
@@ -51,7 +51,7 @@ class FakeAiWaterfall extends AiWaterfallClient
     /**
      * ⚠ RETURNS ITSELF, UNLIKE THE REAL CLIENT, AND THAT IS DELIBERATE.
      *
-     * AiWaterfallClient::withBudget() returns a CLONE, which is right for real
+     * AiClient::withBudget() returns a CLONE, which is right for real
      * use - a per-call budget must not leak into the next caller. But a test
      * holds ONE fake and asserts against its recorded $calls, so a clone would
      * silently record the call on an object the test never sees and every
@@ -192,7 +192,7 @@ class FakeAiWaterfall extends AiWaterfallClient
         $this->calls[] = ['task' => $task, 'mode' => 'embed', 'payload' => ['chars' => mb_strlen($text), 'sensitive' => $sensitive]];
 
         if ($this->queue === []) {
-            throw new AiUnavailableException('FakeAiWaterfall queue exhausted for task ['.$task.']');
+            throw new AiUnavailableException('FakeAiClient queue exhausted for task ['.$task.']');
         }
 
         $next = array_shift($this->queue);
@@ -216,6 +216,186 @@ class FakeAiWaterfall extends AiWaterfallClient
         return ['totals' => ['calls' => count($this->calls)]];
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | ⚠ THE REPORTING SURFACE, WHICH THIS FAKE USED TO LEAVE UNCOVERED
+    |--------------------------------------------------------------------------
+    |
+    | `usageReport()`, `myUsageReport()` and `modelStatus()` were NOT overridden
+    | here, so they fell through to the parent and made LIVE HTTP CALLS from
+    | inside a test. Measured consequence: Portify's ConsoleUsageTest asserted
+    | that an admin console reported 3 AI calls and was handed **2,398** by a
+    | reachable ai-service, and had been testing the network rather than the
+    | controller ever since that console moved off the local ledger.
+    |
+    | A fake that silently falls through to the real transport is worse than no
+    | fake at all, because it makes a networked test look isolated. This
+    | package's own README calls the fake "part of the contract, not a
+    | convenience", and a contract with holes in it is just a habit.
+    |
+    */
+
+    /** @var array<string, mixed>|null */
+    private ?array $usageReportPayload = null;
+
+    /** @var array<int, array<string, mixed>> */
+    private array $statusModels = [];
+
+    /**
+     * Queue the payload the service would have returned, in its wire shape.
+     *
+     * ⚠ `by_outcome` IS A MAP while `by_provider` and `by_tier` are LISTS of
+     * rows - the service's own asymmetry (`UsageController::outcomes()` plucks,
+     * `grouped()` returns rows). AiUsageReport reads each faithfully, so a
+     * fixture that picks one shape for all three reports zero failures with no
+     * error at all.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function queueUsageReport(array $payload): static
+    {
+        $this->usageReportPayload = $payload;
+
+        return $this;
+    }
+
+    /** @param array<int, array<string, mixed>> $models */
+    public function queueModelStatus(array $models): static
+    {
+        $this->statusModels = $models;
+
+        return $this;
+    }
+
+    public function usageReport(array $query = [], ?int $cacheSeconds = null): AiUsageReport
+    {
+        return AiUsageReport::fromArray($this->usageReportPayload ?? $this->emptyReport());
+    }
+
+    public function myUsageReport(array $query = [], ?int $cacheSeconds = null): AiUsageReport
+    {
+        return AiUsageReport::fromArray($this->usageReportPayload ?? $this->emptyReport());
+    }
+
+    public function modelStatus(?int $cacheSeconds = 30): AiModelStatus
+    {
+        /*
+         * ⚠ THE WIRE KEY IS `credentials`, NOT `models`. AiModelStatus::fromArray
+         * reads $payload['credentials'], so a fixture keyed 'models' produces a
+         * report of zero credentials that looks perfectly valid - which is
+         * exactly the kind of quietly-empty fixture a fake exists to prevent.
+         */
+        return AiModelStatus::fromArray(['credentials' => $this->statusModels]);
+    }
+
+    /**
+     * An honest EMPTY report rather than an invented one.
+     *
+     * ⚠ It reports zero calls and says so, so a test that forgot to queue a
+     * payload sees zeros and fails its assertion, instead of being handed
+     * plausible numbers it then asserts nothing useful about.
+     *
+     * @return array<string, mixed>
+     */
+    private function emptyReport(): array
+    {
+        return [
+            'from'   => '1970-01-01T00:00:00+00:00',
+            'to'     => '1970-01-01T00:00:00+00:00',
+            'totals' => ['calls' => 0, 'tokens_in' => 0, 'tokens_out' => 0, 'spend_micros' => 0],
+            'by_provider' => [], 'by_task' => [], 'by_model' => [],
+            'by_tier' => [], 'by_outcome' => [],
+            'latency' => ['p50' => 0, 'p95' => 0],
+        ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Research
+    |--------------------------------------------------------------------------
+    */
+
+    /** @var array<int, array<string, mixed>|Throwable> */
+    private array $searchQueue = [];
+
+    /** @var array<string, array<string, mixed>|null> */
+    private array $pages = [];
+
+    /** @var array<int, array{query: string, task: string}> */
+    public array $searches = [];
+
+    /** @param array<int, array<string, mixed>> $results */
+    public function queueSearch(array $results, string $provider = 'fake-search'): static
+    {
+        $this->searchQueue[] = [
+            'results' => $results, 'provider' => $provider,
+            'latency_ms' => 10, 'attempts' => [],
+        ];
+
+        return $this;
+    }
+
+    public function queueSearchFailure(Throwable $e): static
+    {
+        $this->searchQueue[] = $e;
+
+        return $this;
+    }
+
+    /**
+     * Register what a URL fetches to. An unregistered URL returns null, which
+     * is what the real service does for anything unsafe or unreachable - so a
+     * test that forgot to register one exercises the REFUSAL path rather than
+     * silently receiving invented page text.
+     *
+     * @param  array<string, mixed>|null  $page
+     */
+    public function queuePage(string $url, ?array $page): static
+    {
+        $this->pages[$url] = $page;
+
+        return $this;
+    }
+
+    public function research(): AiResearch
+    {
+        return new FakeAiResearch($this);
+    }
+
+    /**
+     * @internal for FakeAiResearch
+     *
+     * @return array<string, mixed>
+     */
+    public function nextSearch(string $task, string $query): array
+    {
+        $this->searches[] = ['task' => $task, 'query' => $query];
+
+        if ($this->searchQueue === []) {
+            // Same rule as the generation queue: an exhausted fake throws
+            // rather than inventing results a test would then assert on.
+            throw new AiUnavailableException('FakeAiClient search queue exhausted for ['.$query.']');
+        }
+
+        $next = array_shift($this->searchQueue);
+
+        if ($next instanceof Throwable) {
+            throw $next;
+        }
+
+        return $next;
+    }
+
+    /**
+     * @internal for FakeAiResearch
+     *
+     * @return array<string, mixed>|null
+     */
+    public function pageFor(string $url): ?array
+    {
+        return $this->pages[$url] ?? null;
+    }
+
     public function isReachable(): bool
     {
         return true;
@@ -231,7 +411,7 @@ class FakeAiWaterfall extends AiWaterfallClient
              * A fake that quietly invents a result lets a test pass while asserting
              * nothing, which is worse than no test at all.
              */
-            throw new AiUnavailableException('FakeAiWaterfall queue exhausted for task ['.$task.']');
+            throw new AiUnavailableException('FakeAiClient queue exhausted for task ['.$task.']');
         }
 
         $next = array_shift($this->queue);

@@ -1,12 +1,12 @@
 <?php
 
-namespace Shirahcan\AiWaterfall;
+namespace Shirahcan\AiClient;
 
 use GuzzleHttp\Client as Guzzle;
-use Shirahcan\AiWaterfall\Exceptions\AiOverBudgetException;
-use Shirahcan\AiWaterfall\Exceptions\AiUnavailableException;
-use Shirahcan\AiWaterfall\Exceptions\AllProvidersFailedException;
-use Shirahcan\AiWaterfall\Exceptions\NoCompliantCredentialException;
+use Shirahcan\AiClient\Exceptions\AiOverBudgetException;
+use Shirahcan\AiClient\Exceptions\AiUnavailableException;
+use Shirahcan\AiClient\Exceptions\AllProvidersFailedException;
+use Shirahcan\AiClient\Exceptions\NoCompliantCredentialException;
 use Throwable;
 
 /**
@@ -23,7 +23,7 @@ use Throwable;
  * product's config names a provider or a model, that product has an opinion about
  * routing and the single source of truth has leaked back out.
  */
-class AiWaterfallClient
+class AiClient
 {
     public function __construct(
         private string $baseUrl,
@@ -665,10 +665,106 @@ class AiWaterfallClient
                 $decoded['message'] ?? 'Every provider refused.',
                 $decoded['attempts'] ?? []
             ),
+            /*
+             * ⚠ A PAGE THAT CANNOT BE FETCHED IS NOT AN OUTAGE. The research
+             * fetch endpoint answers 422 `not_fetchable` for an unsafe,
+             * unreachable or empty page, and that is a fact about one URL.
+             * Mapped to AiUnavailableException it would read as "ai-service is
+             * down" and every caller's outage branch would fire for a single
+             * bad link.
+             */
+            'not_fetchable' => new AllProvidersFailedException(
+                $decoded['message'] ?? 'That page could not be fetched.',
+                []
+            ),
+
+            /*
+             * ⚠ A SEARCH-SPECIFIC 503 IS AN OUTAGE WITH A DIFFERENT REMEDY:
+             * add a `kind = search` credential. It is not folded into
+             * `no_credential` because an operator told "no credential" looks at
+             * the generation bench, which is full and healthy and has nothing
+             * to do with it.
+             */
+            'no_search_credential' => new AllProvidersFailedException(
+                $decoded['message'] ?? 'No web-search credential is configured.',
+                []
+            ),
+
             default => new AiUnavailableException(
                 ($decoded['message'] ?? 'ai-service returned an error').' (HTTP '.$status.')'
             ),
         };
+    }
+
+    /**
+     * Web search and page fetching.
+     *
+     * A separate surface rather than more methods here, so a caller cannot
+     * reach for `generateJson()` with a search task and be charged for a walk
+     * down the wrong ladder - and so a product testing research does not have
+     * to queue generation results into the fake.
+     */
+    public function research(): AiResearch
+    {
+        return new AiResearch($this);
+    }
+
+    /** The caller's budget for the next call, for surfaces that forward it. */
+    public function budgetSecondsOrNull(): ?float
+    {
+        return $this->budgetSeconds;
+    }
+
+    /**
+     * POST a JSON body and return the decoded success payload.
+     *
+     * ⚠ PUBLIC BECAUSE THE SIBLING SURFACES NEED IT, AND SHARED BECAUSE THE
+     * ERROR MAPPING MUST NOT BE WRITTEN TWICE. Every typed failure this package
+     * promises - over budget, no compliant credential, all providers failed,
+     * unreachable - is decided in `errorFor()`. A second surface that posted
+     * with its own try/catch would map them slightly differently, and the
+     * product's four carefully distinct `catch` blocks would start behaving
+     * differently depending on which endpoint they came from. That is the
+     * duplicate-derivation defect with an outage attached.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     *
+     * @throws AiUnavailableException|AllProvidersFailedException|AiOverBudgetException|NoCompliantCredentialException
+     */
+    public function postJson(string $path, array $body): array
+    {
+        $options = [];
+
+        /*
+         * The transport timeout sits ABOVE the caller's budget, never equal to
+         * it. The service enforces the budget and answers; if the socket gave
+         * up at the same instant the caller would see an unreachable service
+         * instead of the real, attributed failure the service was about to
+         * send.
+         */
+        if ($this->budgetSeconds !== null) {
+            $options['timeout'] = $this->budgetSeconds + 15;
+        }
+
+        try {
+            $response = $this->http->post($path, $options + [
+                'headers'     => $this->headers(),
+                'json'        => $body,
+                'http_errors' => false,
+            ]);
+        } catch (Throwable $e) {
+            throw new AiUnavailableException('ai-service is unreachable: '.$e->getMessage(), previous: $e);
+        }
+
+        $status  = $response->getStatusCode();
+        $decoded = json_decode((string) $response->getBody(), true) ?: [];
+
+        if ($status >= 200 && $status < 300) {
+            return $decoded;
+        }
+
+        throw $this->errorFor($status, $decoded);
     }
 
     private function get(string $path, array $query = []): array

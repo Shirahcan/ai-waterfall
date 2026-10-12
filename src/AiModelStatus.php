@@ -1,6 +1,6 @@
 <?php
 
-namespace Shirahcan\AiWaterfall;
+namespace Shirahcan\AiClient;
 
 /**
  * Which AI models are usable right now, and why the others are not.

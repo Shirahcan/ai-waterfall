@@ -1,6 +1,6 @@
 <?php
 
-namespace Shirahcan\AiWaterfall\Exceptions;
+namespace Shirahcan\AiClient\Exceptions;
 
 /**
  * This product has reached its HARD spend cap.

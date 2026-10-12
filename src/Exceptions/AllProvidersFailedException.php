@@ -1,6 +1,6 @@
 <?php
 
-namespace Shirahcan\AiWaterfall\Exceptions;
+namespace Shirahcan\AiClient\Exceptions;
 
 /**
  * Every credential the waterfall had was tried and refused.
