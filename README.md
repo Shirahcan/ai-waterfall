@@ -132,6 +132,54 @@ its own cost calculator and its own copy of the rate table.
 singleton: mutating in place would put one user's correlation, or one audience's voice,
 into the next request handled by the same worker.
 
+## The vault: `$ai->admin()`
+
+```php
+$vault = $ai->admin();                       // needs AI_SERVICE_ADMIN_KEY
+
+$vault->credentials();                       // configuration, never a key
+$vault->saveCredential([...]);               // same (provider,label) ROTATES
+$vault->updateCredential($id, ['enabled' => false]);
+$vault->clearSensitive($id, 'owner@shirah.co');
+
+$vault->budgets();                           // every product, armed or not
+$vault->setBudget('portify', 20_000_000, 50_000_000, 'owner@shirah.co');
+
+$vault->killSwitch();
+$vault->stop('global', 'owner@shirah.co', 'a key leaked');
+
+$vault->trustKeys();
+$vault->issueTrustKey('finance', 'owner@shirah.co');   // key_shown_once
+```
+
+⚠ **It uses a SEPARATE key, and that separation is the safety model.**
+`AI_SERVICE_ADMIN_KEY`, minted with `php artisan ai:issue-key <product> --admin`, is
+not `AI_SERVICE_TRUST_KEY`. The trust key travels on every generation call this product
+makes, so it is the one most likely to leak - one already did, into a chat transcript,
+on 2026-10-12. Behind the trust key these methods would make four plaintext `.env` lines
+on one box into four estate-wide root keys. The package refuses to boot if the two
+values are the same.
+
+⚠ **A key goes in and never comes back out.** No method here returns an `api_key`, in
+any form. `key_fingerprint` is 8 hex characters of a one-way hash - it answers "did my
+rotation land" and shares none of the secret, which a `sk-...4f2a` mask does not.
+
+⚠ **This surface cannot mint an ADMIN key.** Everything else a leaked admin key could
+do is undone by rotating it; a second admin key it minted for itself would survive the
+rotation and nothing in a key listing would look wrong about it. Admin keys come from
+the artisan command, over SSH, only.
+
+⚠ **No admin key THROWS, and not as an AI failure.**
+`AdminNotConfiguredException` is a `RuntimeException`, deliberately: every product
+catches the AI exceptions to degrade, and degrading here means a console that shows
+empty screens while an operator concludes the vault is empty.
+
+⚠ **Read `armed` on a budget and both flags on a kill switch.** `ai_budget_limits` was
+empty on production, so the hard cap could never fire for anybody - and "no cap" is
+indistinguishable from "a generous cap" from a product's side. Likewise `stopped` is a
+product's own switch while `refusing` is what the generation path gets, which is also
+true under a global stop; collapse them and resuming one product appears to do nothing.
+
 ## Failures are typed, because the remedies differ
 
 | Exception | Means | What to do |
@@ -171,6 +219,13 @@ inherited the real client and made **live HTTP calls from inside a test**. Porti
 by a reachable ai-service; it had been testing the network, not the controller, ever since
 that console moved off the local ledger. A fake that silently falls through to the real
 transport is worse than no fake, because it makes a networked test look isolated.
+
+⚠ **`FakeAiAdmin` models the RULES, not just the shape.** It rotates on a repeated
+(provider, label), refuses to grant clearance through a plain update, fingerprints
+instead of returning a key, lists products with no cap, and keeps a global stop distinct
+from a product stop. `(new FakeAiClient())->withoutAdminKey()` is how a console's "you
+are not authorised" branch gets exercised - the deployment mistake most easily made is
+shipping the console to a product whose env never got the key.
 
 ⚠ **An exhausted queue THROWS** rather than returning something empty, and an unregistered
 URL fetches to `null`. A fake that invents a plausible answer lets a test pass while

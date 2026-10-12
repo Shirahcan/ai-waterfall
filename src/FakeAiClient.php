@@ -2,6 +2,7 @@
 
 namespace Shirahcan\AiClient;
 
+use Shirahcan\AiClient\Exceptions\AdminNotConfiguredException;
 use Shirahcan\AiClient\Exceptions\AiUnavailableException;
 use Throwable;
 
@@ -425,6 +426,66 @@ class FakeAiClient extends AiClient
     public function personas(): AiPersonas
     {
         return new FakeAiPersonas($this, $this->personas);
+    }
+
+    /**
+     * The in-memory vault this fake pretends the service holds.
+     *
+     * ⚠ ONE INSTANCE, HELD FOR THE LIFE OF THE FAKE. A fresh FakeAiAdmin per
+     * call would forget every write, so a console test that added a credential
+     * and then listed them would see an empty vault - and would read as a bug
+     * in the console rather than in the double.
+     */
+    private ?FakeAiAdmin $admin = null;
+
+    /**
+     * ⚠ WHETHER THIS PRODUCT IS CONFIGURED TO ADMINISTER AT ALL, modelled on
+     * purpose. The real client THROWS when no `AI_SERVICE_ADMIN_KEY` is set,
+     * and a fake that always allowed `admin()` would hide the one mistake that
+     * is easiest to make in deployment: shipping the console to a product whose
+     * env never got the key. See {@see withoutAdminKey()}.
+     */
+    private bool $hasAdminKey = true;
+
+    /**
+     * Behave like a product that was never given an admin key.
+     *
+     * This is how a console's "you are not authorised to manage the vault"
+     * branch gets exercised, and that branch matters: without it the screens
+     * render empty and an operator concludes the vault is empty.
+     */
+    public function withoutAdminKey(): static
+    {
+        $this->hasAdminKey = false;
+
+        return $this;
+    }
+
+    public function canAdminister(): bool
+    {
+        return $this->hasAdminKey;
+    }
+
+    public function admin(): AiAdmin
+    {
+        if (! $this->hasAdminKey) {
+            throw AdminNotConfiguredException::make();
+        }
+
+        return $this->admin ??= new FakeAiAdmin();
+    }
+
+    /**
+     * The same vault instance, for seeding and for asserting on writes.
+     *
+     * Named differently from `admin()` so a test reads honestly: `admin()` is
+     * the surface under test, `vault()` is the fixture behind it.
+     */
+    public function vault(): FakeAiAdmin
+    {
+        $this->hasAdminKey = true;
+
+        return $this->admin ??= new FakeAiAdmin();
     }
 
     /** Which voice the LAST call asked to speak in, or null. */

@@ -22,6 +22,28 @@ return [
     'trust_key' => env('AI_SERVICE_TRUST_KEY', ''),
 
     /*
+    |--------------------------------------------------------------------------
+    | The admin key (only for a product with an AI vault console)
+    |--------------------------------------------------------------------------
+    |
+    | ⚠ A DIFFERENT KEY FROM `trust_key`, AND THE SEPARATION IS THE SAFETY
+    | MODEL. Minted with `php artisan ai:issue-key <product> --admin`, and used
+    | ONLY by `$ai->admin()`: credentials, sensitive clearances, spend caps, the
+    | kill switch, and the trust keys other products call with.
+    |
+    | The ordinary trust key travels on every generation call this product
+    | makes, so it is the key most likely to leak - one already did, into a chat
+    | transcript, on 2026-10-12. If the vault answered to it, four plaintext
+    | `.env` lines on one box would each be an estate-wide root key.
+    |
+    | Leave it unset in every product that has no AI admin console. The package
+    | refuses to boot if it is set to the same value as the trust key.
+    |
+    */
+
+    'admin_key' => env('AI_SERVICE_ADMIN_KEY', ''),
+
+    /*
     | Generous: a waterfall that falls through several providers can legitimately
     | take tens of seconds. This is a backstop against a hung socket, not a
     | latency budget - the service enforces its own per-provider timeouts.

@@ -58,6 +58,14 @@ $aliases = [
         => 'Shirahcan\AiWaterfall\Exceptions\NoCompliantCredentialException',
 ];
 
+/*
+ * ⚠ `AiAdmin`, `FakeAiAdmin` AND `AdminNotConfiguredException` ARE NOT ALIASED,
+ * DELIBERATELY. They arrived in 1.2, after the rename, so no product has ever
+ * imported them under the old namespace. An alias for a name that never existed
+ * is not compatibility - it is a second spelling for new code to drift onto, and
+ * it would still be here long after `compat.php` was deleted.
+ */
+
 foreach ($aliases as $current => $legacy) {
     if (! class_exists($legacy, false)) {
         class_alias($current, $legacy);

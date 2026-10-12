@@ -42,10 +42,31 @@ class AiClientServiceProvider extends ServiceProvider
                 );
             }
 
+            $adminKey = (string) config('ai-client.admin_key', '');
+
+            /*
+             * ⚠ AN ADMIN KEY THAT EQUALS THE TRUST KEY IS REFUSED AT BOOT.
+             *
+             * It is the single most likely misconfiguration here - the same
+             * value pasted into both env lines, or a `--admin` key set as
+             * AI_SERVICE_TRUST_KEY - and it silently undoes the whole reason
+             * there are two: every generation call this product makes would
+             * then carry vault-administration rights. Nothing downstream could
+             * detect it, because the service only sees one key either way.
+             */
+            if ($adminKey !== '' && hash_equals($key, $adminKey)) {
+                throw new \RuntimeException(
+                    'ai-client: AI_SERVICE_ADMIN_KEY must not be the same key as AI_SERVICE_TRUST_KEY. '
+                    .'Mint a separate one with `php artisan ai:issue-key <product> --admin`. The key that '
+                    .'travels on every generation call must not be able to administer the vault.'
+                );
+            }
+
             return new AiClient(
                 baseUrl: (string) config('ai-client.base_url'),
                 trustKey: $key,
                 timeout: (int) config('ai-client.timeout', 60),
+                adminKey: $adminKey,
             );
         });
 

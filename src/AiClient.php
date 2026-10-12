@@ -3,6 +3,7 @@
 namespace Shirahcan\AiClient;
 
 use GuzzleHttp\Client as Guzzle;
+use Shirahcan\AiClient\Exceptions\AdminNotConfiguredException;
 use Shirahcan\AiClient\Exceptions\AiOverBudgetException;
 use Shirahcan\AiClient\Exceptions\AiUnavailableException;
 use Shirahcan\AiClient\Exceptions\AllProvidersFailedException;
@@ -30,6 +31,16 @@ class AiClient
         private string $trustKey,
         private int $timeout = 60,
         private ?Guzzle $http = null,
+        /**
+         * ⚠ A SEPARATE KEY FOR ADMINISTERING THE VAULT, AND USUALLY UNSET.
+         *
+         * Only a product with an AI admin console needs one. It must NOT be the
+         * same string as `$trustKey`: that key travels on every generation call
+         * this product makes, so it is the one most likely to leak - one already
+         * did, into a chat transcript, on 2026-10-12 - and it must therefore be
+         * able to do the least. See {@see admin()}.
+         */
+        private string $adminKey = '',
     ) {
         $this->http ??= new Guzzle([
             'base_uri' => rtrim($this->baseUrl, '/').'/',
@@ -796,6 +807,54 @@ class AiClient
         return new AiPersonas($this);
     }
 
+    /**
+     * The estate's AI vault: credentials, clearances, caps, the kill switch and
+     * the trust keys other products call with.
+     *
+     * ⚠ IT USES A DIFFERENT KEY, AND THE SEPARATION IS THE SAFETY MODEL. The
+     * ordinary trust key travels on every generation call this product makes -
+     * it is the key most likely to leak, and one already did, into a chat
+     * transcript, on 2026-10-12. If these endpoints answered to it, every
+     * product's hot-path key would silently be an estate-wide root key able to
+     * mint trust keys and clear a credential to receive client passports.
+     *
+     * ⚠ AND IT THROWS, RATHER THAN DEGRADING, WHEN NO ADMIN KEY IS SET. A
+     * console with no key would otherwise show empty screens and an operator
+     * would conclude the vault was empty. {@see AdminNotConfiguredException} is
+     * a RuntimeException on purpose, so a product's AI degrade paths do not
+     * absorb what is really a deployment mistake.
+     */
+    public function admin(): AiAdmin
+    {
+        if (trim($this->adminKey) === '') {
+            throw AdminNotConfiguredException::make();
+        }
+
+        /*
+         * A clone carrying the admin key as its bearer token, so every admin
+         * call still goes through the one `errorFor()` mapping rather than a
+         * second transport with its own idea of what a 403 means. Cloning also
+         * keeps the admin key off the shared singleton: nothing that was handed
+         * the client for generation can reach the vault with it.
+         */
+        $asAdmin = clone $this;
+        $asAdmin->trustKey = $this->adminKey;
+
+        return new AiAdmin($asAdmin);
+    }
+
+    /**
+     * Can this product administer the vault at all?
+     *
+     * For a console to render "ask an operator with SSH access" instead of
+     * throwing on page load - which is the right shape for a screen that a
+     * product may legitimately not be authorised to show.
+     */
+    public function canAdminister(): bool
+    {
+        return trim($this->adminKey) !== '';
+    }
+
     /** The caller's budget for the next call, for surfaces that forward it. */
     public function budgetSecondsOrNull(): ?float
     {
@@ -878,6 +937,66 @@ class AiClient
         }
 
         $status = $response->getStatusCode();
+        $decoded = json_decode((string) $response->getBody(), true) ?: [];
+
+        if ($status >= 200 && $status < 300) {
+            return $decoded;
+        }
+
+        throw $this->errorFor($status, $decoded);
+    }
+
+    /**
+     * PATCH a partial change, with the same typed error mapping.
+     *
+     * ⚠ PATCH RATHER THAN PUT FOR A REASON THE CALLER MUST KNOW: the service
+     * treats absent fields as UNTOUCHED. Sending a whole row back is how a
+     * console turns "disable this credential" into "blank its model and its
+     * allow-list", which breaks the row for a reason unrelated to the button
+     * that was pressed.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    public function patchJson(string $path, array $body): array
+    {
+        return $this->send('patch', $path, $body);
+    }
+
+    /**
+     * PUT a full replacement, with the same typed error mapping.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    public function putJson(string $path, array $body): array
+    {
+        return $this->send('put', $path, $body);
+    }
+
+    /**
+     * ⚠ ONE PLACE THAT TURNS A RESPONSE INTO A RESULT OR A TYPED FAILURE. Every
+     * promise this package makes is decided in `errorFor()`, so a sibling verb
+     * with its own try/catch would map the same service reply slightly
+     * differently - and a product's four carefully distinct `catch` blocks would
+     * then behave differently depending on which endpoint they came from.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    private function send(string $method, string $path, array $body): array
+    {
+        try {
+            $response = $this->http->{$method}($path, [
+                'headers'     => $this->headers(),
+                'json'        => $body,
+                'http_errors' => false,
+            ]);
+        } catch (Throwable $e) {
+            throw new AiUnavailableException('ai-service is unreachable: '.$e->getMessage(), previous: $e);
+        }
+
+        $status  = $response->getStatusCode();
         $decoded = json_decode((string) $response->getBody(), true) ?: [];
 
         if ($status >= 200 && $status < 300) {
