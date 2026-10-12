@@ -132,6 +132,55 @@ its own cost calculator and its own copy of the rate table.
 singleton: mutating in place would put one user's correlation, or one audience's voice,
 into the next request handled by the same worker.
 
+## Knowledge: `$ai->knowledge()`
+
+```php
+foreach ($entries->chunk(50) as $batch) {
+    $ai->knowledge()->sync($batch->map(fn ($e) => [
+        'slug'     => $e->slug,
+        'text'     => $e->embeddableText(),
+        'audience' => $e->audience,          // null = every audience
+    ])->all());
+}
+
+$ai->knowledge()->retire($everySlugYouStillPublish);   // once, at the end
+
+$hits = $ai->knowledge()->retrieve('how do I reset my password', 'client');
+$hits['matches'][0]['slug'];
+$hits['index_stale'];                                   // read this
+```
+
+⚠ **The AUTHORITY stays in your product; only the INDEX lives here.** What is true -
+and whether an entry still names a route or a tool that exists - belongs where your own
+tests can fail on it. A corpus whose staleness nobody can test is how a stale government
+fee becomes a confident lie, and one cost $1,000 a position. If the only copy of an entry
+is in the service, nothing can test it any more.
+
+⚠ **Vectors live beside the model that made them, and that is the whole reason this
+endpoint exists.** A query embedded by one model and scored against chunks built by
+another returns confident nonsense with **no error**. Every chunk records its model,
+nothing is scored across models, and a reply that could score nothing says
+`index_stale: true` instead of returning an innocent empty list.
+
+⚠ **`audience` is a HARD FILTER, and `null` means the audience-blind entries ONLY.** Not
+everything. The recurring defect: a practising consultant asked how to set up instalments
+for a client and was told to "ask your consultant" - she IS the consultant - because one
+entry served every audience.
+
+⚠ **Sync often; it is cheap.** The service skips by checksum, so re-sending an unchanged
+corpus costs one request and no provider calls, and an identical body of text is embedded
+once and reused across an entry's audiences. What it will not skip is text whose embedding
+model has changed.
+
+⚠ **`retire()` takes what should REMAIN, not what to delete**, because a delete-list
+silently keeps whatever a crashed sync forgot to mention. An empty list is refused unless
+you confirm it: "this product publishes nothing" and "the sync crashed before collecting
+the slugs" are the same request on the wire, and one of them wipes a working index.
+
+⚠ **`retrieve()` THROWS when the query cannot be embedded.** Catch it and fall back to
+your own lexical path - semantic retrieval is an enhancement, and an empty result would be
+indistinguishable from "nothing matched".
+
 ## The vault: `$ai->admin()`
 
 ```php
@@ -188,6 +237,13 @@ true under a global stop; collapse them and resuming one product appears to do n
 | `AiOverBudgetException` | hard spend cap reached | raise the cap or find the loop - takes effect next request |
 | `NoCompliantCredentialException` | sensitive task, no cleared key | a human clears one; **never** retry |
 | `AiUnavailableException` | service unreachable | treat exactly as "all providers failed" today |
+| `AiRequestRefusedException` | the service answered and REFUSED the request | read `->getMessage()`: it says what to fix. `->status`, `->errorCode` |
+
+⚠ `AiRequestRefusedException` **subclasses `AiUnavailableException` on purpose**, so every
+existing degrade path still catches it unchanged. Before 1.3 a refused write arrived as
+"ai-service returned an error (HTTP 422)", which sent a reader to check whether the service
+was up - it was - instead of at the sentence saying what to fix. Catch it FIRST if you show
+operators what the service said.
 
 ⚠ `over_budget` is **not** an outage and must never be folded into it. Opposite remedies,
 and a caller that conflates them sends an operator to the wrong place.

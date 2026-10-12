@@ -466,6 +466,21 @@ class FakeAiClient extends AiClient
         return $this->hasAdminKey;
     }
 
+    /**
+     * The in-memory knowledge index this fake pretends the service holds.
+     *
+     * ⚠ ONE INSTANCE, FOR THE SAME REASON THE VAULT IS ONE: a fresh double
+     * per call would forget every sync, so a test that synced and then
+     * retrieved would find nothing - and would read as a bug in the product
+     * rather than in the double.
+     */
+    private ?FakeAiKnowledge $knowledge = null;
+
+    public function knowledge(): AiKnowledge
+    {
+        return $this->knowledge ??= new FakeAiKnowledge();
+    }
+
     public function admin(): AiAdmin
     {
         if (! $this->hasAdminKey) {

@@ -5,6 +5,7 @@ namespace Shirahcan\AiClient;
 use GuzzleHttp\Client as Guzzle;
 use Shirahcan\AiClient\Exceptions\AdminNotConfiguredException;
 use Shirahcan\AiClient\Exceptions\AiOverBudgetException;
+use Shirahcan\AiClient\Exceptions\AiRequestRefusedException;
 use Shirahcan\AiClient\Exceptions\AiUnavailableException;
 use Shirahcan\AiClient\Exceptions\AllProvidersFailedException;
 use Shirahcan\AiClient\Exceptions\NoCompliantCredentialException;
@@ -749,9 +750,35 @@ class AiClient
                 []
             ),
 
-            default => new AiUnavailableException(
-                ($decoded['message'] ?? 'ai-service returned an error').' (HTTP '.$status.')'
+            /*
+             * ⚠ A QUERY THAT COULD NOT BE EMBEDDED IS NOT AN OUTAGE OF THIS
+             * SERVICE, and the remedy is the same as every provider refusing:
+             * fall back to lexical retrieval. Left on `default` it arrived as
+             * "ai-service returned an error (HTTP 503)", which sends a reader to
+             * check whether the service is up - it is - instead of at the
+             * embedding credential that actually refused.
+             */
+            'embedding_unavailable' => new AllProvidersFailedException(
+                $decoded['message'] ?? 'The query could not be embedded.',
+                $decoded['attempts'] ?? []
             ),
+
+            default => $status >= 400 && $status < 500
+                /*
+                 * ⚠ THE SERVICE ANSWERED AND REFUSED: it is healthy and the
+                 * request was wrong, and its own message usually says exactly
+                 * what to fix. Reported as an outage, that message was thrown
+                 * away. The refusal type SUBCLASSES AiUnavailableException, so
+                 * every existing degrade path still catches it unchanged.
+                 */
+                ? new AiRequestRefusedException(
+                    $decoded['message'] ?? 'ai-service refused the request (HTTP '.$status.').',
+                    $status,
+                    isset($decoded['error']) ? (string) $decoded['error'] : null,
+                )
+                : new AiUnavailableException(
+                    ($decoded['message'] ?? 'ai-service returned an error').' (HTTP '.$status.')'
+                ),
         };
     }
 
@@ -805,6 +832,21 @@ class AiClient
     public function personas(): AiPersonas
     {
         return new AiPersonas($this);
+    }
+
+    /**
+     * This product's knowledge SERVING INDEX in the service: sync it, prune it,
+     * search it semantically.
+     *
+     * ⚠ THE AUTHORITY STAYS IN YOUR PRODUCT. What is true - and whether an
+     * entry still names a route that exists - belongs where your own tests can
+     * fail on it. This is the index built from that corpus, which lives beside
+     * the one embedding model because vectors from two models are not
+     * comparable and the failure is silent.
+     */
+    public function knowledge(): AiKnowledge
+    {
+        return new AiKnowledge($this);
     }
 
     /**
