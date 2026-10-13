@@ -15,10 +15,16 @@ A client that carried its own keys "as a fallback" would recreate the per-produc
 duplication the whole programme exists to end, and would do it invisibly - working fine
 right up until two products were benching the same provider quota separately again.
 
-That is not hypothetical. Measured on production 2026-10-12: **Studendly never integrated
-and still holds five provider keys in its own `.env`**, so its 429s teach nobody else
-anything and its spend appears in no ledger. And **Portify kept 11 live API keys in its own
-database** behind an admin console that no longer affects what answers a user's question.
+That is not hypothetical. An audit of this estate on 2026-10-12 found a product that had
+never integrated and still kept its own provider keys, so its 429s taught nobody else
+anything and its spend appeared in no ledger - and another holding live keys in its own
+database behind an admin console that no longer affected what answers a user's question.
+
+⚠ **Which products, and how many keys, is deliberately not written here.** This
+repository is public so the deploy boxes can install it; naming a product that currently
+has provider keys outside the vault would publish a map of where to look for them. The
+detail lives in the private audit (`portify/docs/plans/ai-infra-2026-10-12/01_AUDIT.md`),
+and the point survives without it: a client that carries keys is a client nobody can audit.
 
 If the service is unreachable, that is an outage to **report**, not to route around.
 
