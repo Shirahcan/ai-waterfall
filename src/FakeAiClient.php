@@ -293,7 +293,16 @@ class FakeAiClient extends AiClient
         return $this;
     }
 
-    /** @param array<int, array<string, mixed>> $models */
+    /**
+     * @param array<int, array<string, mixed>> $models
+     *
+     * ⚠ A ROW WITHOUT A `health` KEY MEANS "THE SERVICE DOES NOT REPORT TIER
+     * HEALTH", which is a real state a product must handle (an un-deployed box)
+     * and NOT the same as a healthy one. A fixture that omits it on purpose is
+     * testing that path; a fixture that omits it by accident will find
+     * `hasRedundancy()` returning null, which is the fake refusing to invent
+     * a verdict rather than quietly handing back a green one.
+     */
     public function queueModelStatus(array $models): static
     {
         $this->statusModels = $models;
