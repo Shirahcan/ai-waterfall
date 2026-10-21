@@ -265,6 +265,61 @@ class ConversationsTest extends TestCase
         $this->assertNull($threads[0]->lastTurnAt);
     }
 
+    /**
+     * ⚠ THE BUG THIS TEST EXISTS FOR, AND IT SHIPPED FOR ONE COMMIT. The payload was assembled
+     * with an `array_filter` that dropped nulls AND falses - written to keep `refused: false`
+     * off the wire - and it therefore also dropped `grounded: false`, which is the single most
+     * useful value that field carries. The service would have recorded null, the aggregate
+     * would have left the reply out of its denominator, and the rate would have looked
+     * HEALTHIER the worse the assistant got.
+     */
+    public function test_an_ungrounded_reply_says_so_on_the_wire_rather_than_saying_nothing(): void
+    {
+        $ai = $this->client([$this->json(['turn' => [
+            'id' => 't-1', 'role' => 'assistant', 'body' => 'I am not sure.',
+            'grounded' => false, 'provenance_class' => 'unknown',
+        ], 'created' => true])]);
+
+        $turn = $ai->conversations()->append(
+            'c-1', ConversationTurn::ROLE_ASSISTANT, 'I am not sure.',
+            grounded: false, provenanceClass: 'unknown',
+        );
+
+        $this->assertArrayHasKey('grounded', $this->body(), 'A false is a value, not an absence.');
+        $this->assertFalse($this->body()['grounded']);
+        $this->assertSame('unknown', $this->body()['provenance_class']);
+
+        $this->assertFalse($turn->grounded);
+        $this->assertTrue($turn->statedItsProvenance());
+    }
+
+    /** A reply that genuinely says nothing sends nothing, and is not counted as ungrounded. */
+    public function test_a_reply_that_states_no_provenance_sends_neither_field(): void
+    {
+        $ai = $this->client([$this->json(['turn' => [
+            'id' => 't-1', 'role' => 'assistant', 'body' => 'Answered.',
+        ], 'created' => true])]);
+
+        $turn = $ai->conversations()->append('c-1', ConversationTurn::ROLE_ASSISTANT, 'Answered.');
+
+        $this->assertArrayNotHasKey('grounded', $this->body());
+        $this->assertArrayNotHasKey('provenance_class', $this->body());
+
+        $this->assertNull($turn->grounded);
+        $this->assertFalse($turn->statedItsProvenance());
+    }
+
+    /** And `refused: false` still stays off the wire, which is what the filter was protecting. */
+    public function test_a_turn_that_was_not_refused_does_not_say_so(): void
+    {
+        $ai = $this->client([$this->json(['turn' => ['id' => 't-1', 'role' => 'user', 'body' => 'Asked.'], 'created' => true])]);
+
+        $ai->conversations()->append('c-1', ConversationTurn::ROLE_USER, 'Asked.');
+
+        $this->assertArrayNotHasKey('refused', $this->body());
+        $this->assertSame(['role' => 'user', 'body' => 'Asked.'], $this->body());
+    }
+
     /*
     |--------------------------------------------------------------------------
     | The fake, which must refuse what the service refuses
@@ -404,6 +459,27 @@ class ConversationsTest extends TestCase
         $this->assertSame(1, $stats['turns']['refused_by_audience']['consultant']);
         $this->assertArrayNotHasKey('client', $stats['turns']['refused_by_audience']);
         $this->assertSame(0.5, $stats['turns']['refusal_rate']);
+    }
+
+    /** The fake's denominator is the service's denominator: replies that stated a provenance. */
+    public function test_the_fake_counts_grounding_the_way_the_service_does(): void
+    {
+        $ai = new FakeAiClient;
+
+        $thread = $ai->conversations()->start('u-1', audience: 'consultant', clientRef: 'a');
+
+        $ai->conversations()->append($thread->id, ConversationTurn::ROLE_ASSISTANT, 'From the file.', grounded: true, provenanceClass: 'case_record');
+        $ai->conversations()->append($thread->id, ConversationTurn::ROLE_ASSISTANT, 'Not sure.', grounded: false, provenanceClass: 'unknown');
+        $ai->conversations()->append($thread->id, ConversationTurn::ROLE_ASSISTANT, 'Said nothing about it.');
+        $ai->conversations()->append($thread->id, ConversationTurn::ROLE_USER, 'A question.');
+
+        $grounding = $ai->conversations()->stats()['turns']['grounding_by_audience']['consultant'];
+
+        $this->assertSame(2, $grounding['replies_stating_provenance']);
+        $this->assertSame(1, $grounding['grounded']);
+        $this->assertSame(1, $grounding['unknown']);
+        $this->assertSame(0.5, $grounding['grounded_rate']);
+        $this->assertSame(0.5, $grounding['unknown_rate']);
     }
 
     public function test_the_fake_erases_a_person_s_threads_and_leaves_the_others(): void

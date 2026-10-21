@@ -94,24 +94,67 @@ class AiConversations
         ?int $personaVersion = null,
         ?int $usageId = null,
         ?string $clientRef = null,
+        ?bool $grounded = null,
+        ?string $provenanceClass = null,
     ): ConversationTurn {
-        $payload = $this->client->postJson("api/v1/conversations/{$conversationId}/turns", array_filter([
-            'role' => $role,
-            'body' => $body,
+        /*
+         * ⚠ BUILT EXPLICITLY, NOT FILTERED BY TRUTHINESS, and the reason is a bug this method
+         * had for one commit. An `array_filter` that dropped nulls AND falses - written to keep
+         * `refused: false` off the wire - also dropped `grounded: false`, which is the single
+         * most useful value either of those fields carries: "this reply was NOT grounded" is
+         * exactly what a self-reflect backlog is built from. The service would have recorded
+         * null, the aggregate would have left the reply out of its denominator, and the
+         * resulting rate would have looked HEALTHIER the worse the assistant got.
+         *
+         * A false is a value. Only a null means "nothing to say".
+         */
+        $body = ($body ?? '') === '' ? null : $body;
+        $structured = $structured === [] ? null : $structured;
 
-            /*
-             * ⚠ AN EMPTY ARRAY IS NOT STRUCTURE. Sent as `[]` it would satisfy the service's
-             * "one of the two is required" rule while carrying nothing, which is the empty
-             * turn that rule exists to refuse - and the refusal would arrive as a validation
-             * error from the wrong field.
-             */
-            'structured'      => $structured === [] ? null : $structured,
-            'refused'         => $refused,
-            'persona_key'     => $personaKey,
-            'persona_version' => $personaVersion,
-            'usage_id'        => $usageId,
-            'client_ref'      => $clientRef,
-        ], fn ($value) => $value !== null && $value !== false));
+        $turn = ['role' => $role];
+
+        if ($body !== null) {
+            $turn['body'] = $body;
+        }
+
+        /*
+         * ⚠ AN EMPTY ARRAY IS NOT STRUCTURE. Sent as `[]` it would satisfy the service's "one
+         * of the two is required" rule while carrying nothing, which is the empty turn that
+         * rule exists to refuse - and the refusal would arrive as a validation error about the
+         * wrong field.
+         */
+        if ($structured !== null) {
+            $turn['structured'] = $structured;
+        }
+
+        if ($refused) {
+            $turn['refused'] = true;
+        }
+
+        /*
+         * ⚠ PASS THESE ON EVERY ASSISTANT REPLY. They are in clear, so they are the only part
+         * of a reply that can still be GROUPED once the bodies are ciphertext, and
+         * `$ai->conversations()->stats()` reports them per audience - which is where a
+         * self-reflect backlog comes from. Leave them null on a person's question and on a
+         * reply that genuinely says nothing about where it came from, because a reply that said
+         * nothing is not an ungrounded reply.
+         */
+        if ($grounded !== null) {
+            $turn['grounded'] = $grounded;
+        }
+
+        if ($provenanceClass !== null) {
+            $turn['provenance_class'] = $provenanceClass;
+        }
+
+        foreach (['persona_key' => $personaKey, 'persona_version' => $personaVersion,
+            'usage_id' => $usageId, 'client_ref' => $clientRef] as $field => $value) {
+            if ($value !== null) {
+                $turn[$field] = $value;
+            }
+        }
+
+        $payload = $this->client->postJson("api/v1/conversations/{$conversationId}/turns", $turn);
 
         return ConversationTurn::fromArray((array) ($payload['turn'] ?? []));
     }
@@ -256,9 +299,10 @@ class AiConversations
      * ask this week" is no longer a query over text; the service keeps a narrow set of columns
      * in clear for exactly this, and nothing here decrypts anything.
      *
-     * ⚠ READ `refused_by_audience`, NOT ONLY `refusal_rate`. A blended rate hides the failure
-     * that actually happened in production: an assistant acceptable to clients while failing the
-     * professionals who pay for it. A practising consultant was told to "ask your consultant".
+     * ⚠ READ `refused_by_audience` AND `grounding_by_audience`, NOT ONLY `refusal_rate`. A
+     * blended rate hides the failure that actually happened in production: an assistant
+     * acceptable to clients while failing the professionals who pay for it. A practising
+     * consultant was told to "ask your consultant".
      *
      * @return array<string, mixed>
      */

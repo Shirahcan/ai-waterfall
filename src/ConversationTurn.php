@@ -35,6 +35,16 @@ final class ConversationTurn
         public readonly ?string $body,
         public readonly ?array $structured,
         public readonly bool $refused,
+
+        /*
+         * ⚠ IN CLEAR, AND NULLABLE, BECAUSE "NOT APPLICABLE" IS NOT "NOT GROUNDED". A person's
+         * question cannot be grounded or invented. These two are what `porter:self-reflect`
+         * groups by, and they are outside `structured` because ciphertext cannot be grouped -
+         * inside it, the weekly backlog would return zeros from a 200.
+         */
+        public readonly ?bool $grounded,
+        public readonly ?string $provenanceClass,
+
         public readonly ?string $personaKey,
         public readonly ?int $personaVersion,
         public readonly ?int $usageId,
@@ -54,6 +64,8 @@ final class ConversationTurn
             body: ($a['body'] ?? null) === null || $a['body'] === '' ? null : (string) $a['body'],
             structured: is_array($structured) && $structured !== [] ? $structured : null,
             refused: (bool) ($a['refused'] ?? false),
+            grounded: array_key_exists('grounded', $a) && $a['grounded'] !== null ? (bool) $a['grounded'] : null,
+            provenanceClass: ($a['provenance_class'] ?? null) === null ? null : (string) $a['provenance_class'],
             personaKey: ($a['persona_key'] ?? null) === null ? null : (string) $a['persona_key'],
             personaVersion: ($a['persona_version'] ?? null) === null ? null : (int) $a['persona_version'],
             usageId: ($a['usage_id'] ?? null) === null ? null : (int) $a['usage_id'],
@@ -83,6 +95,18 @@ final class ConversationTurn
     public function hasStructure(): bool
     {
         return $this->structured !== null;
+    }
+
+    /**
+     * Whether this reply said where it came from at all.
+     *
+     * ⚠ A REPLY THAT SAID NOTHING IS NOT AN UNGROUNDED REPLY, and treating the two alike is
+     * how a rate becomes meaningless: an assistant that reports nothing would read as one that
+     * grounds nothing.
+     */
+    public function statedItsProvenance(): bool
+    {
+        return $this->grounded !== null;
     }
 
     private static function time(mixed $value): ?DateTimeImmutable

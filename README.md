@@ -301,6 +301,21 @@ must never share a paragraph - so do not flatten them to display them.
 ⚠ **A refusal is a turn, not an error.** It arrives as a 200 and belongs in the
 transcript. In clear, it is the most useful aggregate the service holds.
 
+⚠ **Pass `grounded` and `provenanceClass` on every assistant reply.** They are in clear, so
+they are the only part of a reply that can still be GROUPED once the bodies are ciphertext -
+and `stats()` reports them per audience, which is where a self-reflect backlog comes from.
+Leave them `null` on a person's question and on a reply that genuinely says nothing about
+where it came from: **a reply that said nothing is not an ungrounded reply**, and folding
+those in makes an assistant that reports nothing look like one that grounds nothing. A
+`false` is a value and is sent; only `null` means "nothing to say".
+
+⚠ **Retention is per (product, audience), and most specific wins.** Set it from the admin
+surface: `PUT /v1/admin/retention` with a `product` (and optionally an `audience`) and
+`days`. Portify needs it because it owes three different promises - 30 days to a visitor on
+its own site, 14 to a visitor on a consultant's site, and for ever to anybody signed in - and
+a single per-product number would either delete a client's history or keep an anonymous
+visitor's for a year.
+
 ⚠ **Pages walk BACKWARDS with `nextBefore`, and you never build a cursor.** An
 unrecognised one is refused rather than quietly restarting, because a silent restart is how
 a paging loop runs for ever while every response looks valid.

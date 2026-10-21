@@ -106,6 +106,8 @@ class FakeAiConversations extends AiConversations
         ?int $personaVersion = null,
         ?int $usageId = null,
         ?string $clientRef = null,
+        ?bool $grounded = null,
+        ?string $provenanceClass = null,
     ): ConversationTurn {
         $this->mustHold($conversationId);
 
@@ -129,7 +131,9 @@ class FakeAiConversations extends AiConversations
             'role'            => $role,
             'body'            => $body,
             'structured'      => $structured === [] ? null : $structured,
-            'refused'         => $refused,
+            'refused'          => $refused,
+            'grounded'         => $grounded,
+            'provenance_class' => $provenanceClass,
             'persona_key'     => $personaKey,
             'persona_version' => $personaVersion,
             'usage_id'        => $usageId,
@@ -275,6 +279,7 @@ class FakeAiConversations extends AiConversations
         $assistant = 0;
         $refusedByAudience = [];
         $byAudience = [];
+        $grounding = [];
         $noTurns = 0;
 
         foreach ($this->threads as $id => $row) {
@@ -296,6 +301,23 @@ class FakeAiConversations extends AiConversations
                     $refused++;
                     $refusedByAudience[$audience] = ($refusedByAudience[$audience] ?? 0) + 1;
                 }
+
+                /*
+                 * ⚠ ONLY REPLIES THAT STATED A PROVENANCE ARE IN THE DENOMINATOR, exactly as
+                 * the service counts it. A reply that said nothing is not an ungrounded reply.
+                 */
+                if ($turn['role'] === ConversationTurn::ROLE_ASSISTANT && ($turn['grounded'] ?? null) !== null) {
+                    $grounding[$audience] ??= ['replies_stating_provenance' => 0, 'grounded' => 0, 'unknown' => 0];
+                    $grounding[$audience]['replies_stating_provenance']++;
+
+                    if ($turn['grounded']) {
+                        $grounding[$audience]['grounded']++;
+                    }
+
+                    if (($turn['provenance_class'] ?? null) === 'unknown') {
+                        $grounding[$audience]['unknown']++;
+                    }
+                }
             }
         }
 
@@ -312,6 +334,14 @@ class FakeAiConversations extends AiConversations
                 'refused'             => $refused,
                 'refusal_rate'        => $assistant > 0 ? round($refused / $assistant, 4) : null,
                 'refused_by_audience' => $refusedByAudience,
+                'grounding_by_audience' => array_map(fn (array $row) => $row + [
+                    'grounded_rate' => $row['replies_stating_provenance'] > 0
+                        ? round($row['grounded'] / $row['replies_stating_provenance'], 4)
+                        : null,
+                    'unknown_rate' => $row['replies_stating_provenance'] > 0
+                        ? round($row['unknown'] / $row['replies_stating_provenance'], 4)
+                        : null,
+                ], $grounding),
             ],
             'basis' => 'Counted from the clear-text columns only. No transcript was read to build this.',
         ];
