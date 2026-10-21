@@ -884,6 +884,31 @@ class AiClient
     }
 
     /**
+     * This product's conversations: start a thread, append a turn, read a page, erase.
+     *
+     * ⚠ THE SERVICE HOLDS THE TRANSCRIPT AND CANNOT IDENTIFY THE PERSON. `owner_ref` is YOUR
+     * id for them and nothing in the service can map it to a human - what is centralised is
+     * the text, not the identity. So authorisation stays yours: the trust key proves which
+     * PRODUCT is calling, never which person, and you decide who may read a thread exactly as
+     * you decide who may read a case.
+     *
+     * ⚠ THIS IS A STORE, NOT A CACHE. Unlike {@see knowledge()}, where the authority stays in
+     * your product and only the index lives in the service, here the service IS the authority -
+     * that is the estate's own pattern, proven in calendar-service and video-service, and
+     * `Meeting.php` says so in its own docblock. Keep your row's own foreign keys and this
+     * thread's id; let the summary scalars hydrate.
+     *
+     * ⚠ AND THE TRANSCRIPT IS ENCRYPTED AT REST, WITH A RETENTION WINDOW THAT RUNS. Both were
+     * conditions, not features: a store that kept everything for ever would be a liability
+     * holding a client's immigration history on the box that holds every provider key. Expect
+     * a thread to be GONE one day, and render that rather than reporting it.
+     */
+    public function conversations(): AiConversations
+    {
+        return new AiConversations($this);
+    }
+
+    /**
      * The estate's AI vault: credentials, clearances, caps, the kill switch and
      * the trust keys other products call with.
      *
@@ -1085,14 +1110,22 @@ class AiClient
     /**
      * DELETE and return the decoded payload.
      *
+     * ⚠ `$query` IS WHY A DELETE HERE CAN CARRY A FILTER. An erasure by person or by subject
+     * has to say WHICH, and a DELETE body is the one request shape proxies and clients are
+     * least consistent about forwarding. The service refuses a collection DELETE with no
+     * filter rather than reading it as "everything", so a dropped parameter is a 422 and never
+     * a wipe.
+     *
+     * @param  array<string, mixed>  $query
      * @return array<string, mixed>
      */
-    public function deleteJson(string $path): array
+    public function deleteJson(string $path, array $query = []): array
     {
         try {
             $response = $this->http->delete($path, [
                 'headers' => $this->headers(),
                 'http_errors' => false,
+                'query' => $query,
             ]);
         } catch (Throwable $e) {
             throw new AiUnavailableException('ai-service is unreachable: '.$e->getMessage(), previous: $e);

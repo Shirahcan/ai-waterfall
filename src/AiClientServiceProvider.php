@@ -3,6 +3,7 @@
 namespace Shirahcan\AiClient;
 
 use Illuminate\Support\ServiceProvider;
+use Shirahcan\AiClient\Laravel\Conversations\HeldConversations;
 
 class AiClientServiceProvider extends ServiceProvider
 {
@@ -88,6 +89,16 @@ class AiClientServiceProvider extends ServiceProvider
          * same change as `compat.php`.
          */
         $this->app->alias(AiClient::class, self::LEGACY_CLIENT);
+
+        /*
+         * ⚠ SCOPED, NOT A SINGLETON, AND THE DIFFERENCE IS LOAD-BEARING. `HeldConversations`
+         * holds the conversations this REQUEST has read, so a list and then one of its rows
+         * costs one call. A singleton would survive between requests in a long-lived worker
+         * (Octane, a queue process), and the product would then render a title somebody
+         * renamed an hour ago, or keep showing a thread retention has already erased. The
+         * service is the authority; a copy that outlives the request is a second one.
+         */
+        $this->app->scoped(HeldConversations::class, fn () => new HeldConversations);
     }
 
     public function boot(): void

@@ -257,6 +257,91 @@ the slugs" are the same request on the wire, and one of them wipes a working ind
 your own lexical path - semantic retrieval is an enhancement, and an empty result would be
 indistinguishable from "nothing matched".
 
+## Conversations: `$ai->conversations()`
+
+```php
+$thread = $ai->conversations()->start(
+    ownerRef: (string) $user->id,          // YOUR id for them, never a name or an email
+    audience: 'consultant',
+    subjectRef: (string) $case->id,        // YOUR id for what it is about
+    clientRef: (string) $row->id,          // YOUR id for the thread - makes a retry safe
+);
+
+$ai->conversations()->append($thread->id, ConversationTurn::ROLE_USER, $question, clientRef: $messageId);
+$ai->conversations()->append($thread->id, ConversationTurn::ROLE_ASSISTANT, $answer->text,
+    structured: $answer->fields, refused: $answer->declined);
+
+$page = $ai->conversations()->read($thread->id);            // newest page first
+$threads = $ai->conversations()->forOwner((string) $user->id);   // summaries only
+
+$ai->conversations()->eraseForOwner((string) $user->id);    // "forget me"
+$ai->conversations()->eraseForSubject((string) $case->id);  // "forget this matter"
+```
+
+⚠ **The service holds the transcript and CANNOT identify the person.** `ownerRef` is your
+own id and nothing in the service can map it to a human. What is centralised is the text,
+not the identity - so **authorisation stays yours**: the trust key proves which PRODUCT is
+calling, never which person. Decide who may read a thread exactly as you decide who may
+read a case, before you call.
+
+⚠ **This is a STORE, not a cache**, and that is the opposite of `knowledge()`. Here the
+service IS the authority. It is the estate's own pattern, proven in calendar-service and
+video-service, and `Meeting.php` says so in its own docblock: the product keeps its own
+foreign keys and the thread's id, and hydrates the rest.
+
+⚠ **Pass a `clientRef` on every write.** A loopback call can still time out AFTER the
+service has committed; your retry then writes a second copy, and nothing raises an error
+because both writes succeeded. The person sees their own question twice in their own
+history, or a blank thread nobody started appears in their list.
+
+⚠ **A turn needs prose OR structure, and `structured` stays structured.** A `ReeveAnswer`
+holds six fields whose separation is a safety control - a ledger figure and a regulation
+must never share a paragraph - so do not flatten them to display them.
+
+⚠ **A refusal is a turn, not an error.** It arrives as a 200 and belongs in the
+transcript. In clear, it is the most useful aggregate the service holds.
+
+⚠ **Pages walk BACKWARDS with `nextBefore`, and you never build a cursor.** An
+unrecognised one is refused rather than quietly restarting, because a silent restart is how
+a paging loop runs for ever while every response looks valid.
+
+⚠ **A thread WILL be gone one day.** Retention erases on a schedule and an erasure erases
+on request, so `byIds()` can return fewer threads than you asked for. That absence is the
+answer, not a failure - render it. `FakeAiConversations::pretendRetentionErased()` exists
+so you can reach that branch in a test.
+
+### The held pattern: `HeldInAiService`
+
+```php
+class AssistantConversation extends Model
+{
+    use HeldInAiService;
+
+    protected static function aiConversationSubject(): string
+    {
+        return PorterThreadSubject::class;   // implements HeldConversationSubject
+    }
+}
+```
+
+Loading a collection hydrates `title`, `turn_count` and `last_turn_at` from the service in
+**one** call, so they really are the model's attributes and `isDirty()`, `getOriginal()` and
+`wasChanged()` still mean what they always meant. Held columns are never written to your
+table, and a dirty held attribute is sent to the service FIRST - a refusal means nothing
+changed.
+
+⚠ **Only the SUMMARY SCALARS are held, never the turns**, and this is the one way it
+differs from `HeldInCalendarService`. A booking's held facts are a few scalars on one row;
+a conversation's are a LIST that grows, so hydrating turns per row would be N requests of M
+turns. Read turns with `read()`, for the one thread on screen.
+
+⚠ **Writing a DERIVED held attribute throws.** `turn_count` and `last_turn_at` are counted
+from the turns by the service. Dropping such a write quietly is what `Meeting` did over its
+booking: the change went nowhere and nothing said so.
+
+⚠ **`cursor()` and raw `DB::table()` reads BYPASS hydration**, because no collection is
+built. When you sweep a product after a cutover, that is what you are looking for.
+
 ## The vault: `$ai->admin()`
 
 ```php

@@ -490,6 +490,31 @@ class FakeAiClient extends AiClient
         return $this->knowledge ??= new FakeAiKnowledge();
     }
 
+    /**
+     * The in-memory conversation store this fake pretends the service holds.
+     *
+     * ⚠ ONE INSTANCE, for the same reason the knowledge index is one: a fresh double per call
+     * would forget every thread, so a test that started a conversation and then appended to it
+     * would get "no such conversation" and read as a bug in the product.
+     */
+    private ?FakeAiConversations $conversations = null;
+
+    public function conversations(): AiConversations
+    {
+        return $this->conversations ??= new FakeAiConversations();
+    }
+
+    /**
+     * The fake store itself, for the setup and assertions the typed surface does not expose:
+     * `pretendRetentionErased()`, `forgetTurn()`, `turnCount()`, `$writes`.
+     */
+    public function transcripts(): FakeAiConversations
+    {
+        $this->conversations();
+
+        return $this->conversations;
+    }
+
     public function admin(): AiAdmin
     {
         if (! $this->hasAdminKey) {
