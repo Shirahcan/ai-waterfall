@@ -30,6 +30,9 @@ class FakeAiAdmin extends AiAdmin
     /** @var array<string, array<string, mixed>> */
     private array $budgets = [];
 
+    /** @var array<string, array<string, int>> product => audience ('' = default) => days */
+    private array $retention = [];
+
     /** @var array<int, array<string, mixed>> */
     private array $trustKeys = [];
 
@@ -229,6 +232,81 @@ class FakeAiAdmin extends AiAdmin
     | Spend
     |--------------------------------------------------------------------------
     */
+
+    /**
+     * ⚠ EVERY PRODUCT, CONFIGURED OR NOT, like the real listing - because "no row" and a
+     * deliberate choice looking identical is how `ai_budget_limits` sat empty in production
+     * with the spend cap unable to fire for anybody.
+     *
+     * @return array{retention: list<array<string, mixed>>, summary: array<string, mixed>}
+     */
+    public function retention(): array
+    {
+        $rows = [];
+
+        foreach ($this->products as $product) {
+            $windows = $this->retention[$product] ?? [];
+            $configured = array_key_exists('', $windows);
+            $days = $windows[''] ?? 365;
+
+            $audiences = [];
+
+            foreach ($windows as $audience => $value) {
+                if ($audience !== '') {
+                    $audiences[] = ['audience' => $audience, 'days' => $value, 'threads_held' => 0];
+                }
+            }
+
+            $rows[] = [
+                'product'    => $product,
+                'days'       => $days,
+                'configured' => $configured,
+                'audiences'  => $audiences,
+                'threads_held'        => 0,
+                'threads_past_window' => 0,
+                'threads_unstamped'   => 0,
+                'state' => $configured
+                    ? "kept for {$days} days after the last turn, unless an audience below says otherwise"
+                    : "kept for {$days} days after the last turn - NOT configured, this is the service default",
+            ];
+        }
+
+        return [
+            'retention' => $rows,
+            'summary'   => [
+                'products'     => count($rows),
+                'configured'   => count(array_filter($rows, fn (array $r) => $r['configured'])),
+                'default_days' => 365,
+                'max_days'     => 3650,
+                'threads_past_window' => 0,
+            ],
+        ];
+    }
+
+    /**
+     * ⚠ MOST SPECIFIC WINS, AND SETTING THE DEFAULT DOES NOT FLATTEN AN AUDIENCE, exactly as
+     * the service resolves it. A fake that overwrote everything would let a product's test pass
+     * on a rule production does not apply - and the real one quietly lengthening an anonymous
+     * visitor's window to a signed-in client's is the mistake worth catching.
+     */
+    public function setRetention(string $product, int $days, ?string $audience = null): array
+    {
+        $key = ($audience === null || $audience === '') ? '' : $audience;
+
+        $previous = $this->retention[$product][$key] ?? null;
+        $this->retention[$product][$key] = $days;
+
+        $this->writes[] = ['retention.set', $product, $key, $days];
+
+        $listed = collect($this->retention()['retention'])->firstWhere('product', $product);
+
+        return [
+            'retention'            => (array) $listed,
+            'threads_restamped'    => 0,
+            'previous_days'        => $previous,
+            'erased_by_next_prune' => 0,
+        ];
+    }
 
     public function budgets(): array
     {

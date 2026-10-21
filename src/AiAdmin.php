@@ -266,6 +266,63 @@ class AiAdmin
      *
      * @return array{trust_keys: array<int, array<string, mixed>>, products: array<int, array<string, mixed>>}
      */
+    /**
+     * How long each product keeps its transcripts, and whether anybody decided.
+     *
+     * ⚠ READ THE `audiences` LIST, NOT ONLY THE PRODUCT LINE. One product can owe several
+     * promises - Portify keeps 30 days for a visitor on its own site and for ever for anybody
+     * signed in - and the product line alone would misreport every audience that has its own
+     * window.
+     *
+     * ⚠ AND READ `configured`. A product with no row is not unprotected, it runs on the service
+     * default, but nobody has DECIDED it - and "no row" looking identical to a deliberate choice
+     * is exactly how `ai_budget_limits` sat empty in production with the spend cap unable to
+     * fire for anybody.
+     *
+     * @return array{retention: list<array<string, mixed>>, summary: array<string, mixed>}
+     */
+    public function retention(): array
+    {
+        $payload = $this->client->getJson('api/v1/admin/retention');
+
+        return [
+            'retention' => array_values((array) ($payload['retention'] ?? [])),
+            'summary'   => (array) ($payload['summary'] ?? []),
+        ];
+    }
+
+    /**
+     * Set how long a product - or one of its audiences - keeps transcripts.
+     *
+     * ⚠ IT RE-STAMPS THE EXISTING THREADS, which is the point. Without that, shortening a
+     * window would change the console and not the data: the screen would say 90 days while
+     * every row kept a year. The reply's `erased_by_next_prune` is the consequence, and it is
+     * worth reading BEFORE the prune runs rather than after.
+     *
+     * ⚠ OMITTING `$audience` SETS THE PRODUCT'S DEFAULT and does NOT overwrite an audience that
+     * has its own window. Most specific wins, so a default set carelessly cannot quietly
+     * lengthen an anonymous visitor's window to a signed-in client's.
+     *
+     * @return array{retention: array<string, mixed>, threads_restamped: int, previous_days: ?int, erased_by_next_prune: int}
+     */
+    public function setRetention(string $product, int $days, ?string $audience = null): array
+    {
+        $body = ['product' => $product, 'days' => $days];
+
+        if ($audience !== null && $audience !== '') {
+            $body['audience'] = $audience;
+        }
+
+        $payload = $this->client->putJson('api/v1/admin/retention', $body);
+
+        return [
+            'retention'            => (array) ($payload['retention'] ?? []),
+            'threads_restamped'    => (int) ($payload['threads_restamped'] ?? 0),
+            'previous_days'        => $payload['previous_days'] ?? null,
+            'erased_by_next_prune' => (int) ($payload['erased_by_next_prune'] ?? 0),
+        ];
+    }
+
     public function trustKeys(): array
     {
         $payload = $this->client->getJson('api/v1/admin/trust-keys');

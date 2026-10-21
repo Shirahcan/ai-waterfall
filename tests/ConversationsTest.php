@@ -320,6 +320,24 @@ class ConversationsTest extends TestCase
         $this->assertSame(['role' => 'user', 'body' => 'Asked.'], $this->body());
     }
 
+    /**
+     * ⚠ ONLY A MIRRORED TURN STATES ITS OWN TIME. A live turn omits it and the service
+     * timestamps it, which is the only version a product cannot get wrong.
+     */
+    public function test_a_mirrored_turn_states_when_it_happened_and_a_live_one_does_not(): void
+    {
+        $ai = $this->client([
+            $this->json(['turn' => ['id' => 't-1', 'role' => 'user', 'body' => 'Then.'], 'created' => true]),
+            $this->json(['turn' => ['id' => 't-2', 'role' => 'user', 'body' => 'Now.'], 'created' => true]),
+        ]);
+
+        $ai->conversations()->append('c-1', ConversationTurn::ROLE_USER, 'Then.', occurredAt: new \DateTimeImmutable('2024-10-21T09:00:00+00:00'));
+        $ai->conversations()->append('c-1', ConversationTurn::ROLE_USER, 'Now.');
+
+        $this->assertSame('2024-10-21T09:00:00+00:00', $this->body(0)['occurred_at']);
+        $this->assertArrayNotHasKey('occurred_at', $this->body(1));
+    }
+
     /*
     |--------------------------------------------------------------------------
     | The fake, which must refuse what the service refuses
@@ -480,6 +498,29 @@ class ConversationsTest extends TestCase
         $this->assertSame(1, $grounding['unknown']);
         $this->assertSame(0.5, $grounding['grounded_rate']);
         $this->assertSame(0.5, $grounding['unknown_rate']);
+    }
+
+    /**
+     * ⚠ THE FAKE MUST ORDER BY THE STATED TIME TOO. A fake that appended blindly would let a
+     * product's paging test pass on an order production would never produce - and mirroring
+     * runs on a queue, so out-of-order arrival is the normal case rather than the exotic one.
+     */
+    public function test_the_fake_keeps_a_mirrored_transcript_in_the_order_it_happened(): void
+    {
+        $ai = new FakeAiClient;
+        $thread = $ai->conversations()->start('u-9');
+
+        $ai->conversations()->append($thread->id, ConversationTurn::ROLE_ASSISTANT, 'second', occurredAt: new \DateTimeImmutable('2025-01-02T09:00:00+00:00'));
+        $ai->conversations()->append($thread->id, ConversationTurn::ROLE_USER, 'first', occurredAt: new \DateTimeImmutable('2025-01-01T09:00:00+00:00'));
+
+        $page = $ai->conversations()->read($thread->id);
+
+        $this->assertSame(['first', 'second'], array_map(fn ($t) => $t->body, $page->turns));
+
+        // ⚠ And the thread's last activity is the MAXIMUM, not the last write - in the service
+        // that distinction was a way to erase a live thread, because the retention stamp is
+        // derived from it.
+        $this->assertSame('2025-01-02', $ai->conversations()->byIds([$thread->id])[$thread->id]->lastTurnAt?->format('Y-m-d'));
     }
 
     public function test_the_fake_erases_a_person_s_threads_and_leaves_the_others(): void

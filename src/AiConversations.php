@@ -96,6 +96,7 @@ class AiConversations
         ?string $clientRef = null,
         ?bool $grounded = null,
         ?string $provenanceClass = null,
+        ?\DateTimeInterface $occurredAt = null,
     ): ConversationTurn {
         /*
          * ⚠ BUILT EXPLICITLY, NOT FILTERED BY TRUTHINESS, and the reason is a bug this method
@@ -145,6 +146,18 @@ class AiConversations
 
         if ($provenanceClass !== null) {
             $turn['provenance_class'] = $provenanceClass;
+        }
+
+        /*
+         * ⚠ ONLY FOR A TURN BEING MIRRORED, never for a live one. A live turn omits it and the
+         * service timestamps it, which is the only version a product cannot get wrong. Pass it
+         * when moving an existing transcript, or every message of a two-year conversation will
+         * carry the moment of the backfill and read as a single afternoon - and it is also what
+         * makes mirroring safe to do on a QUEUE, since two jobs running out of order still
+         * produce the right order.
+         */
+        if ($occurredAt !== null) {
+            $turn['occurred_at'] = $occurredAt->format(DATE_ATOM);
         }
 
         foreach (['persona_key' => $personaKey, 'persona_version' => $personaVersion,

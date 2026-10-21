@@ -108,6 +108,7 @@ class FakeAiConversations extends AiConversations
         ?string $clientRef = null,
         ?bool $grounded = null,
         ?string $provenanceClass = null,
+        ?\DateTimeInterface $occurredAt = null,
     ): ConversationTurn {
         $this->mustHold($conversationId);
 
@@ -138,10 +139,20 @@ class FakeAiConversations extends AiConversations
             'persona_version' => $personaVersion,
             'usage_id'        => $usageId,
             'client_ref'      => $clientRef,
-            'created_at'      => $this->now(),
+            'created_at'      => $occurredAt?->format('Y-m-d\TH:i:s.uP') ?? $this->now(),
         ];
 
         $this->turns[$conversationId][] = $turn;
+
+        /*
+         * ⚠ KEPT IN THE ORDER IT HAPPENED, NOT THE ORDER IT ARRIVED, exactly as the service
+         * does it. A fake that appended blindly would let a product's paging test pass on an
+         * order production would never produce.
+         */
+        usort($this->turns[$conversationId], fn (array $a, array $b) => strcmp(
+            (string) $a['created_at'],
+            (string) $b['created_at'],
+        ));
         $this->resummarise($conversationId);
 
         $this->writes[] = ['append' => $conversationId, 'role' => $role, 'client_ref' => $clientRef];
@@ -412,9 +423,15 @@ class FakeAiConversations extends AiConversations
 
         // ⚠ COUNTED, NOT INCREMENTED - the rule the real store is built on.
         $this->threads[$conversationId]['turn_count'] = count($turns);
+
+        /*
+         * ⚠ THE MAXIMUM, NOT THE LAST WRITE. In the service that distinction was a way to erase
+         * a live thread: mirroring one old message moved the last activity backwards, and the
+         * retention stamp is derived from it.
+         */
         $this->threads[$conversationId]['last_turn_at'] = $turns === []
             ? null
-            : ($turns[count($turns) - 1]['created_at'] ?? null);
+            : max(array_column($turns, 'created_at'));
     }
 
     private function mustHold(string $conversationId): void
