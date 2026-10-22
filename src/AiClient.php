@@ -72,6 +72,43 @@ class AiClient
         return $clone;
     }
 
+    /** @var array<int, array{provider: string, model?: string}>|null */
+    private ?array $preferredModels = null;
+
+    /**
+     * Ask the service to try these (provider, model) pairs FIRST.
+     *
+     * ⚠ THE SERVICE HAS HONOURED THIS SINCE IT WAS WRITTEN AND NO CLIENT COULD
+     * SEND IT. Its executor reorders eligible credentials by preference; its
+     * controller never read the field off the wire, so the capability existed
+     * and was unreachable from outside.
+     *
+     * Portify's case-outcome verdict is the caller that needs it: a PAID deep
+     * verdict escalates the model by case complexity, and from the day Portify's
+     * seam shipped (2026-09-19) that escalation was dropped at the boundary - a
+     * client paid for a deeper read and got whatever answered first, which on
+     * that bench is a free flash-lite rung. Found 2026-10-22.
+     *
+     * ⚠ ADVISORY, NEVER AUTHORISING. It only REORDERS credentials the walk was
+     * already allowed to use, so it cannot reach a disabled credential, cannot
+     * escape the paid-tier restriction a sensitive task carries, and cannot
+     * clear anything for client documents. A pair with no eligible credential is
+     * skipped. Ask for a stronger model; you cannot ask for a forbidden one.
+     *
+     * ⚠ A CLONE, LIKE withBudget(). The client is a singleton, so a preference
+     * set in place would push one caller's model choice onto the next request
+     * handled by the same worker.
+     *
+     * @param  array<int, array{provider: string, model?: string}>  $pairs
+     */
+    public function withPreferredModels(array $pairs): static
+    {
+        $clone = clone $this;
+        $clone->preferredModels = $pairs === [] ? null : array_values($pairs);
+
+        return $clone;
+    }
+
     /**
      * The caller's own identifiers, recorded on every usage row this call makes.
      *
@@ -659,6 +696,7 @@ class AiClient
         $body['persona']              ??= $this->persona;
         $body['audience']             ??= $this->personaAudience;
         $body['per_provider_timeout'] = $this->perProviderTimeout;
+        $body['preferred_models']     = $this->preferredModels;
 
         $body = array_filter($body, fn ($v) => $v !== null && $v !== []);
 

@@ -52,4 +52,16 @@ class FakeCallLog
      * @var array{persona: string, audience: ?string}|null
      */
     public ?array $persona = null;
+
+    /**
+     * The (provider, model) pairs the last call asked to be tried first, or null.
+     *
+     * ⚠ RECORDED BECAUSE THE REAL FAILURE WAS A FIELD THAT NEVER CROSSED THE
+     * WIRE. The service honoured `preferred_models` and no client sent it, so
+     * Portify's paid deep verdict silently lost its model escalation for a
+     * month. A fake that cannot show what was SENT cannot catch that.
+     *
+     * @var array<int, array{provider: string, model?: string}>|null
+     */
+    public ?array $preferredModels = null;
 }

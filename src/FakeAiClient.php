@@ -592,6 +592,14 @@ class FakeAiClient extends AiClient
         return parent::withCorrelation($correlation);
     }
 
+    public function withPreferredModels(array $pairs): static
+    {
+        // Recorded BEFORE the clone, or the test holding the original sees nothing.
+        $this->log->preferredModels = $pairs === [] ? null : array_values($pairs);
+
+        return parent::withPreferredModels($pairs);
+    }
+
     /**
      * @internal for FakeAiResearch
      *
