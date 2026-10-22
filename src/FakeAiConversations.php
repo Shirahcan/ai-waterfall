@@ -157,7 +157,175 @@ class FakeAiConversations extends AiConversations
 
         $this->writes[] = ['append' => $conversationId, 'role' => $role, 'client_ref' => $clientRef];
 
-        return ConversationTurn::fromArray($turn);
+        /*
+         * ⚠ WITH THE THREAD'S SUMMARY, because the real append answers with it and a product
+         * now INDEXES that answer. A fake that returned the turn alone would let a product's
+         * "the index came from the service" test pass while the product quietly wrote `now()`.
+         */
+        return ConversationTurn::fromAppend([
+            'turn'         => $turn,
+            'conversation' => $this->threads[$conversationId],
+        ]);
+    }
+
+    /**
+     * One page of this product's turns from ACROSS its threads, newest first.
+     *
+     * ⚠ EVERY FILTER THE SERVICE APPLIES, APPLIED HERE TOO, and `grounded`/`refused` are
+     * compared with `!== null` rather than truthiness for the reason the real client learned
+     * the hard way: `grounded: false` IS the backlog, and a fake that dropped it would make a
+     * product's "find the ungrounded replies" test pass against every reply.
+     */
+    public function turns(CorpusFilter $filter = new CorpusFilter(), int $limit = 100, ?string $before = null): CorpusPage
+    {
+        $rows = [];
+
+        foreach ($this->threads as $id => $thread) {
+            if (! $this->threadMatches($thread, $filter)) {
+                continue;
+            }
+
+            foreach ($this->turns[$id] ?? [] as $turn) {
+                if ($this->turnMatches($turn, $filter)) {
+                    $rows[] = $turn + [
+                        'conversation_id' => $id,
+                        'audience'        => $thread['audience'] ?? null,
+                        'owner_ref'       => $thread['owner_ref'] ?? null,
+                    ];
+                }
+            }
+        }
+
+        /*
+         * Newest first, on (created_at, id), so a backfilled transcript that shares one second
+         * still has a total order - which is the whole reason the service's cursor is a pair.
+         */
+        usort($rows, fn (array $a, array $b) => [$b['created_at'], $b['id']] <=> [$a['created_at'], $a['id']]);
+
+        if ($before !== null && $before !== '') {
+            $cut = null;
+
+            foreach ($rows as $index => $row) {
+                if ($row['id'] === $before) {
+                    $cut = $index;
+                    break;
+                }
+            }
+
+            // Refused, not restarted, exactly as the service does it.
+            if ($cut === null) {
+                throw new RuntimeException(
+                    'unknown_cursor: that `before` turn is not one of this product\'s turns, so no page could be taken from it.'
+                );
+            }
+
+            $rows = array_slice($rows, $cut + 1);
+        }
+
+        $page = array_slice($rows, 0, $limit);
+        $hasMore = count($rows) > count($page);
+
+        return new CorpusPage(
+            turns: array_map(fn (array $row) => ConversationTurn::fromArray($row), $page),
+            hasMore: $hasMore,
+            nextBefore: $hasMore && $page !== [] ? (string) $page[count($page) - 1]['id'] : null,
+        );
+    }
+
+    /**
+     * Every matching turn, paging as it goes.
+     *
+     * ⚠ THE SAME LOOP AS THE REAL CLIENT'S, so a product's sweep is exercised rather than
+     * side-stepped: a fake that handed everything back in one go would never reach the second
+     * page, which is where a paging bug lives.
+     *
+     * @return \Generator<int, ConversationTurn>
+     */
+    public function eachTurn(CorpusFilter $filter = new CorpusFilter(), int $perPage = 200, int $maxTurns = 0): \Generator
+    {
+        $before = null;
+        $yielded = 0;
+
+        do {
+            $page = $this->turns($filter, $perPage, $before);
+
+            foreach ($page->turns as $turn) {
+                yield $turn;
+
+                $yielded++;
+
+                if ($maxTurns > 0 && $yielded >= $maxTurns) {
+                    return;
+                }
+            }
+
+            $before = $page->nextBefore;
+        } while ($page->hasMore && $before !== null);
+    }
+
+    /** @param array<string, mixed> $thread */
+    private function threadMatches(array $thread, CorpusFilter $filter): bool
+    {
+        foreach ([
+            'owner_ref'   => $filter->ownerRef,
+            'subject_ref' => $filter->subjectRef,
+            'audience'    => $filter->audience,
+        ] as $field => $wanted) {
+            if ($wanted !== null && $wanted !== '' && ($thread[$field] ?? null) !== $wanted) {
+                return false;
+            }
+        }
+
+        return $filter->conversationIds === []
+            || in_array((string) ($thread['id'] ?? ''), $filter->conversationIds, true);
+    }
+
+    /** @param array<string, mixed> $turn */
+    private function turnMatches(array $turn, CorpusFilter $filter): bool
+    {
+        if ($filter->role !== null && $filter->role !== '' && $turn['role'] !== $filter->role) {
+            return false;
+        }
+
+        if ($filter->provenanceClass !== null && $filter->provenanceClass !== ''
+            && ($turn['provenance_class'] ?? null) !== $filter->provenanceClass) {
+            return false;
+        }
+
+        /*
+         * ⚠ `!== null` ON BOTH SIDES, AND THE SECOND HALF IS A BUG THIS FAKE HAD UNTIL A TEST
+         * FOUND IT. On the filter side a deliberate false is a value to match on, not an absent
+         * filter. On the TURN side a null is "not applicable" and must never satisfy
+         * `grounded: false`: the service compares in SQL, where `grounded = 0` is NULL rather
+         * than true for a null column, so a person's QUESTION is not in the ungrounded replies.
+         * Casting the column to bool made `null` look like `false`, which handed a product
+         * mining its backlog every question alongside every failed answer - and the fake would
+         * have been MORE PERMISSIVE THAN THE SERVICE, which is the one thing a fake must never
+         * be. "Not applicable is not not-grounded" is the whole reason the column is nullable.
+         */
+        foreach (['refused' => $filter->refused, 'grounded' => $filter->grounded] as $field => $wanted) {
+            if ($wanted === null) {
+                continue;
+            }
+
+            $value = $turn[$field] ?? null;
+
+            if ($value === null || (bool) $value !== $wanted) {
+                return false;
+            }
+        }
+
+        $at = (string) ($turn['created_at'] ?? '');
+
+        if ($filter->since !== null && $at < $filter->since->format('Y-m-d\TH:i:s')) {
+            return false;
+        }
+
+        if ($filter->until !== null && $at > $filter->until->format('Y-m-d\TH:i:s.uP')) {
+            return false;
+        }
+
+        return true;
     }
 
     public function read(string $conversationId, ?string $before = null, int $limit = 50): ConversationPage
@@ -291,6 +459,8 @@ class FakeAiConversations extends AiConversations
         $refusedByAudience = [];
         $byAudience = [];
         $grounding = [];
+        $replies = [];
+        $repliedThreads = [];
         $noTurns = 0;
 
         foreach ($this->threads as $id => $row) {
@@ -306,6 +476,16 @@ class FakeAiConversations extends AiConversations
 
                 if ($turn['role'] === ConversationTurn::ROLE_ASSISTANT) {
                     $assistant++;
+
+                    /*
+                     * ⚠ EVERY REPLY, WHICH IS A DIFFERENT DENOMINATOR FROM THE GROUNDING ONE
+                     * BELOW. Portify's weekly report divides `unknown` by every assistant turn;
+                     * the grounding block divides by replies that STATED a provenance. Giving
+                     * self-reflect the wrong one would have moved every figure in the digest
+                     * without a single test failing.
+                     */
+                    $replies[$audience] = ($replies[$audience] ?? 0) + 1;
+                    $repliedThreads[$audience][$id] = true;
                 }
 
                 if ($turn['refused']) {
@@ -345,6 +525,14 @@ class FakeAiConversations extends AiConversations
                 'refused'             => $refused,
                 'refusal_rate'        => $assistant > 0 ? round($refused / $assistant, 4) : null,
                 'refused_by_audience' => $refusedByAudience,
+                'by_audience' => array_combine(array_keys($replies), array_map(
+                    fn (int $count, string $audience) => [
+                        'replies'       => $count,
+                        'conversations' => count($repliedThreads[$audience] ?? []),
+                    ],
+                    $replies,
+                    array_keys($replies),
+                )),
                 'grounding_by_audience' => array_map(fn (array $row) => $row + [
                     'grounded_rate' => $row['replies_stating_provenance'] > 0
                         ? round($row['grounded'] / $row['replies_stating_provenance'], 4)

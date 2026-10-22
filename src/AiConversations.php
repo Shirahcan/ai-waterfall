@@ -38,6 +38,13 @@ class AiConversations
     /** The service's own cap on one page of turns. */
     public const MAX_PAGE = 200;
 
+    /**
+     * The service's own cap on one CORPUS page, which is higher than a thread page and should
+     * be: a screenful of chat is 50 turns, while a weekly sweep over a corpus wants as many per
+     * request as the service will decrypt at once.
+     */
+    public const MAX_CORPUS_PAGE = 500;
+
     public function __construct(private AiClient $client) {}
 
     /**
@@ -169,7 +176,13 @@ class AiConversations
 
         $payload = $this->client->postJson("api/v1/conversations/{$conversationId}/turns", $turn);
 
-        return ConversationTurn::fromArray((array) ($payload['turn'] ?? []));
+        /*
+         * ⚠ `fromAppend`, NOT `fromArray`, so the thread's summary AFTER this turn comes back
+         * with it. The service has always answered with it and this client dropped it, which
+         * left a product that needs to know when its thread was last active either asking again
+         * or writing `now()` - and the second is a product deciding a fact the service owns.
+         */
+        return ConversationTurn::fromAppend($payload);
     }
 
     /**
@@ -187,6 +200,73 @@ class AiConversations
         }
 
         return ConversationPage::fromArray($this->client->getJson("api/v1/conversations/{$conversationId}", $query));
+    }
+
+    /**
+     * One page of this product's turns from ACROSS its threads, newest first.
+     *
+     * ⚠ THIS IS THE CORPUS READ, AND IT IS NOT A SUBSTITUTE FOR `read()`. Use `read()` for the
+     * thread somebody is looking at. Use this when the question is about the corpus and the
+     * WORDS are the answer: the composer's recall ring (this person's last 300 questions across
+     * threads), `porter:mine-knowledge-gaps`, `porter:reflect`. Each of those is one SQL query
+     * while the transcript is local and N requests of M turns without this.
+     *
+     * ⚠ AND ASK `stats()` INSTEAD WHEN THE ANSWER IS A COUNT. This read decrypts every body it
+     * returns; `stats()` is built from the clear-text columns and reads no words at all. "How
+     * often did it refuse, per audience" is a stats question, not a corpus question.
+     */
+    public function turns(CorpusFilter $filter = new CorpusFilter(), int $limit = 100, ?string $before = null): CorpusPage
+    {
+        $query = $filter->toQuery();
+        $query['limit'] = min($limit, self::MAX_CORPUS_PAGE);
+
+        if ($before !== null && $before !== '') {
+            $query['before'] = $before;
+        }
+
+        return CorpusPage::fromArray($this->client->getJson('api/v1/conversations/turns', $query));
+    }
+
+    /**
+     * Every matching turn, paging as it goes.
+     *
+     * ⚠ THE PAGING LOOP LIVES HERE SO FOUR PRODUCTS DO NOT EACH WRITE IT. A loop that forgets
+     * to stop on a null cursor runs for ever and a loop that forgets to pass `before` fetches
+     * page one repeatedly - both of which look like a working command that is simply slow.
+     *
+     * ⚠ `$maxTurns` IS A STOP, NOT A PAGE SIZE. A weekly report over a year of transcripts
+     * should be able to say "the most recent 2,000 and no more" without the caller counting.
+     *
+     *     foreach ($ai->conversations()->eachTurn($filter) as $turn) { ... }
+     *
+     * @return \Generator<int, ConversationTurn>
+     */
+    public function eachTurn(CorpusFilter $filter = new CorpusFilter(), int $perPage = 200, int $maxTurns = 0): \Generator
+    {
+        $before = null;
+        $yielded = 0;
+
+        do {
+            $page = $this->turns($filter, $perPage, $before);
+
+            foreach ($page->turns as $turn) {
+                yield $turn;
+
+                $yielded++;
+
+                if ($maxTurns > 0 && $yielded >= $maxTurns) {
+                    return;
+                }
+            }
+
+            $before = $page->nextBefore;
+
+            /*
+             * ⚠ BOTH CONDITIONS, because either one alone has failed in this estate. A page
+             * that says `has_more` with no cursor would loop on page one for ever; a cursor
+             * present on the last page would make one wasted request per sweep.
+             */
+        } while ($page->hasMore && $before !== null);
     }
 
     /**
