@@ -461,6 +461,7 @@ class FakeAiConversations extends AiConversations
         $grounding = [];
         $replies = [];
         $repliedThreads = [];
+        $byProvenance = [];
         $noTurns = 0;
 
         foreach ($this->threads as $id => $row) {
@@ -486,6 +487,16 @@ class FakeAiConversations extends AiConversations
                      */
                     $replies[$audience] = ($replies[$audience] ?? 0) + 1;
                     $repliedThreads[$audience][$id] = true;
+
+                    /*
+                     * ⚠ A NULL CLASS IS ITS OWN KEY, exactly as the service counts it. Those are
+                     * turns written before provenance existed, and folding them into `unknown`
+                     * would put a spike in the one figure `porter:reflect` warns on.
+                     */
+                    $klass = ($turn['provenance_class'] ?? null) === null
+                        ? 'pre-provenance'
+                        : (string) $turn['provenance_class'];
+                    $byProvenance[$klass] = ($byProvenance[$klass] ?? 0) + 1;
                 }
 
                 if ($turn['refused']) {
@@ -533,6 +544,7 @@ class FakeAiConversations extends AiConversations
                     $replies,
                     array_keys($replies),
                 )),
+                'by_provenance_class' => $byProvenance,
                 'grounding_by_audience' => array_map(fn (array $row) => $row + [
                     'grounded_rate' => $row['replies_stating_provenance'] > 0
                         ? round($row['grounded'] / $row['replies_stating_provenance'], 4)
