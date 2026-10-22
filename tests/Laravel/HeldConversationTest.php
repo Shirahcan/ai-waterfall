@@ -342,4 +342,112 @@ class HeldConversationTest extends TestCase
 
         $this->assertSame(1, $this->ai->transcripts()->batchReads, 'The second read is already known.');
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | The outage, which was never tested and whose blast radius was wrong
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * ⚠ LOADING A HELD MODEL MUST NOT THROW WHEN ai-service IS UNREACHABLE, AND IT USED TO.
+     * Hydration runs inside `newCollection()`, so the rethrow came out of EVERY Eloquent query
+     * that returned a held model - including the ones that never touch a held attribute. The
+     * docblock argued for it ("a stale fallback would be a LIE") and the argument was sound
+     * about the VALUES and wrong about the SCOPE: in Portify it meant the authorisation check
+     * that reads `user_id` threw, the scheduled prune threw, and the erasure sweep threw, so a
+     * person asking to be forgotten would have had nothing erased in either store.
+     *
+     * No test covered this path, which is exactly why it was never noticed.
+     */
+    public function test_an_unreachable_service_does_not_break_loading_the_model(): void
+    {
+        $thread = $this->ai->conversations()->start(ownerRef: 'user-1', audience: 'consultant', title: 'Held title');
+        $row = HeldThread::create(['user_ref' => 'user-1', 'ai_conversation_id' => $thread->id]);
+
+        // Portify's own column still holds whatever it last wrote, as it does during a soak.
+        DB::table('held_threads')->where('id', $row->id)->update(['title' => 'The product last wrote this']);
+
+        $this->app->forgetScopedInstances();
+        $this->ai->pretendConversationsUnavailable();
+
+        $reloaded = HeldThread::findOrFail($row->id);
+
+        $this->assertSame('user-1', $reloaded->user_ref);
+
+        /*
+         * ⚠ NOTHING IS INVENTED AND NOTHING IS OVERWRITTEN. The row keeps its own values rather
+         * than being hydrated to "erased", because the service did not say it was erased - it
+         * did not answer at all.
+         */
+        $this->assertSame('The product last wrote this', $reloaded->title);
+        $this->assertFalse($reloaded->aiConversationFactsAreCurrent());
+    }
+
+    /**
+     * ⚠ AN OUTAGE IS NOT AN ERASURE, and this is the distinction that decides whether a product
+     * hides - or deletes - data it still has. `get()` returning null means the service ANSWERED
+     * and does not hold the thread; unreachable means nobody asked.
+     */
+    public function test_an_outage_does_not_read_as_an_erasure(): void
+    {
+        $thread = $this->ai->conversations()->start(ownerRef: 'user-1', audience: 'consultant', title: 'Held title');
+        $row = HeldThread::create(['user_ref' => 'user-1', 'ai_conversation_id' => $thread->id]);
+
+        $this->app->forgetScopedInstances();
+        $this->ai->pretendConversationsUnavailable();
+
+        $this->assertTrue(HeldThread::findOrFail($row->id)->aiConversationStillHeld());
+
+        // And a thread the service DOES answer about, and does not hold, still reads as erased.
+        $this->app->forgetScopedInstances();
+        $this->ai->pretendConversationsUnavailable(false);
+        $this->ai->transcripts()->pretendRetentionErased($thread->id);
+
+        $reloaded = HeldThread::findOrFail($row->id);
+
+        $this->assertFalse($reloaded->aiConversationStillHeld());
+        $this->assertTrue($reloaded->aiConversationFactsAreCurrent());
+        $this->assertNull($reloaded->title);
+    }
+
+    /**
+     * ⚠ A FAILURE RECORDS NOTHING FOR THOSE IDS, so the next read in the same request asks
+     * again. Writing nulls on failure would make one unreachable moment read as a permanent
+     * erasure for the rest of the request - answered from memory, with no further call and no
+     * way back.
+     */
+    public function test_the_loader_asks_again_once_the_service_comes_back(): void
+    {
+        $thread = $this->ai->conversations()->start(ownerRef: 'user-1', audience: 'consultant', title: 'Held title');
+        $row = HeldThread::create(['user_ref' => 'user-1', 'ai_conversation_id' => $thread->id]);
+
+        $this->app->forgetScopedInstances();
+        $this->ai->pretendConversationsUnavailable();
+
+        $this->assertNull(HeldThread::findOrFail($row->id)->title, 'Nothing was written, so nothing was hydrated.');
+
+        $this->ai->pretendConversationsUnavailable(false);
+
+        // The SAME request, no scope reset: the failed ids were not cached, so it asks again.
+        $this->assertSame('Held title', HeldThread::findOrFail($row->id)->title);
+        $this->assertTrue(app(HeldConversations::class)->isUnavailable() === false);
+    }
+
+    /**
+     * ⚠ A WRITE STILL THROWS, which is the half that must NOT degrade. A rename the service never
+     * heard about is the silently-lost write `Meeting` already shipped over its booking: the
+     * product's column is not written either, so the change simply vanishes with nothing said.
+     */
+    public function test_a_rename_during_an_outage_fails_loudly(): void
+    {
+        $thread = $this->ai->conversations()->start(ownerRef: 'user-1', audience: 'consultant', title: 'Held title');
+        $row = HeldThread::create(['user_ref' => 'user-1', 'ai_conversation_id' => $thread->id]);
+
+        $this->ai->pretendConversationsUnavailable();
+
+        $this->expectException(\Shirahcan\AiClient\Exceptions\AiUnavailableException::class);
+
+        $row->update(['title' => 'A rename nobody would ever see']);
+    }
 }

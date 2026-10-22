@@ -110,7 +110,19 @@ trait HeldInAiService
             return;
         }
 
-        $conversations = app(HeldConversations::class)->load(array_keys($ids));
+        $loader = app(HeldConversations::class);
+        $conversations = $loader->load(array_keys($ids));
+
+        /*
+         * ⚠ AN UNREACHABLE SERVICE LEAVES EVERY ROW ALONE, rather than hydrating the whole list
+         * to "erased". The product's own columns are whatever it last wrote - stale during a
+         * soak, empty after a contraction - and either is a more honest answer than telling
+         * somebody their conversation is gone because a loopback call timed out. Ask
+         * `aiConversationFactsAreCurrent()` to say so on the page.
+         */
+        if ($loader->isUnavailable()) {
+            return;
+        }
 
         foreach ($models as $model) {
             if (! $model instanceof self || ! $model->exists) {
@@ -157,9 +169,15 @@ trait HeldInAiService
             return;
         }
 
-        $values = $subject->hydrate(app(HeldConversations::class)->get($id), $this);
+        $loader = app(HeldConversations::class);
+        $conversation = $loader->get($id);
 
-        $this->setRawAttributes(array_merge($this->getAttributes(), $values), false);
+        // Unreachable: keep what this instance already holds rather than claiming an erasure.
+        if ($loader->isUnavailable()) {
+            return;
+        }
+
+        $this->setRawAttributes(array_merge($this->getAttributes(), $subject->hydrate($conversation, $this)), false);
     }
 
     /** True once the record is held by a conversation (its held columns are no longer its own). */
@@ -186,7 +204,34 @@ trait HeldInAiService
             return false;
         }
 
-        return app(HeldConversations::class)->get($id) !== null;
+        $loader = app(HeldConversations::class);
+        $conversation = $loader->get($id);
+
+        /*
+         * ⚠ AN OUTAGE IS NOT AN ERASURE, and answering false here would make a product hide
+         * every conversation it has whenever ai-service hiccupped - and, far worse on a surface
+         * that offers to clean up, treat "unreachable" as licence to delete the row. When the
+         * service could not be asked, the honest answer to "is this still held" is yes: nothing
+         * has told us otherwise.
+         */
+        if ($loader->isUnavailable()) {
+            return true;
+        }
+
+        return $conversation !== null;
+    }
+
+    /**
+     * Whether the held facts on this instance are the service's current answer.
+     *
+     * ⚠ THIS IS WHAT A PAGE SHOULD RENDER FROM DURING AN OUTAGE. False means the attributes are
+     * the product's own last-written values rather than the authority's, so a surface can say
+     * "we cannot show the history right now" instead of presenting a stale title as current or
+     * an absent one as erased.
+     */
+    public function aiConversationFactsAreCurrent(): bool
+    {
+        return ! $this->isHeldInAiService() || ! app(HeldConversations::class)->isUnavailable();
     }
 
     /** The conversation itself, from the request's one read, or null if it is not held. */
