@@ -499,9 +499,43 @@ class FakeAiClient extends AiClient
      */
     private ?FakeAiConversations $conversations = null;
 
+    /** Whether the fake should behave as though ai-service cannot be reached. */
+    private bool $conversationsUnavailable = false;
+
     public function conversations(): AiConversations
     {
+        /*
+         * ⚠ THE OUTAGE BRANCH HAS TO BE REACHABLE, AND IT IS THE ONE PRODUCTS GET WRONG. Since
+         * the conversation store became the authority for a product's transcripts, "what happens
+         * when ai-service cannot be reached" stopped being a tidiness question: it decides
+         * whether a person's own message is written at all, whether a thread list renders, and
+         * whether an erasure a client asked for actually happened. A fake with no way to say
+         * "unavailable" leaves every one of those branches untested, and they are the branches
+         * that only run on the worst day.
+         *
+         * Thrown HERE rather than inside each method because this is the seam a product crosses:
+         * `AiUnavailableException` from the accessor is exactly what a resolution-time failure
+         * looks like in production.
+         */
+        if ($this->conversationsUnavailable) {
+            throw new AiUnavailableException('ai-service is unreachable: the fake was told to pretend so.');
+        }
+
         return $this->conversations ??= new FakeAiConversations();
+    }
+
+    /**
+     * Pretend ai-service cannot be reached for conversations.
+     *
+     * ⚠ IT DOES NOT DISCARD WHAT THE FAKE ALREADY HOLDS, so a test can take the service away
+     * and give it back - which is the shape of a real outage, and the only way to test that a
+     * product recovers rather than merely that it survives.
+     */
+    public function pretendConversationsUnavailable(bool $unavailable = true): static
+    {
+        $this->conversationsUnavailable = $unavailable;
+
+        return $this;
     }
 
     /**
