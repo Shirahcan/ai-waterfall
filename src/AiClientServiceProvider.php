@@ -7,16 +7,6 @@ use Shirahcan\AiClient\Laravel\Conversations\HeldConversations;
 
 class AiClientServiceProvider extends ServiceProvider
 {
-    /**
-     * The pre-1.0 class name, as a LITERAL.
-     *
-     * ⚠ IT CANNOT BE WRITTEN AS `AiWaterfallClient::class`, AND THAT IS THE
-     * WHOLE REASON THIS CONSTANT EXISTS. `::class` is resolved by the compiler
-     * from the source text, NOT through `class_alias`, so writing it would
-     * produce the new name and the alias below would bind nothing.
-     */
-    private const LEGACY_CLIENT = 'Shirahcan\AiWaterfall\AiWaterfallClient';
-
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/ai-client.php', 'ai-client');
@@ -70,25 +60,6 @@ class AiClientServiceProvider extends ServiceProvider
                 adminKey: $adminKey,
             );
         });
-
-        /*
-         * ⚠ THE CONTAINER NEEDS THE OLD NAME TOO, AND `class_alias` IS NOT
-         * ENOUGH ON ITS OWN.
-         *
-         * `src/compat.php` makes the old class name resolve to this one, so
-         * type hints and `catch` blocks keep working. But a product that writes
-         * `app(AiWaterfallClient::class)` passes the container the LITERAL
-         * string `Shirahcan\AiWaterfall\AiWaterfallClient` - because `::class`
-         * is compiled from the source text and never consults an alias. Without
-         * this line the container would not find that key, would fall back to
-         * reflection, and would try to construct the client with no base URL,
-         * no trust key and no timeout. Every AI call in that product would die
-         * at the container, not at the service.
-         *
-         * So the alias is the other half of the shim, and it is removed in the
-         * same change as `compat.php`.
-         */
-        $this->app->alias(AiClient::class, self::LEGACY_CLIENT);
 
         /*
          * ⚠ SCOPED, NOT A SINGLETON, AND THE DIFFERENCE IS LOAD-BEARING. `HeldConversations`

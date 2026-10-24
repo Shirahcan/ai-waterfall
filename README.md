@@ -7,7 +7,7 @@ has to `auth-service`, and `shirahcan/calendar-client` has to `calendar-service`
 
 > **Renamed from `shirahcan/ai-waterfall` at 1.0.** "Waterfall" named one internal mechanism
 > of the service, and the package now also carries research and (next) the assistant harness.
-> See **Migrating** below; nothing breaks in the meantime.
+> The old names were removed in 1.17.0; see **Migrating** below.
 
 ## ⚠ It holds no provider keys, and must never learn how to
 
@@ -465,31 +465,16 @@ asserting nothing.
 
 ## Migrating from `shirahcan/ai-waterfall`
 
-Nothing breaks on the day you upgrade. `src/compat.php` aliases every public class name, so
-`Shirahcan\AiWaterfall\AiWaterfallClient`, the four exceptions and the value objects all
-keep working.
-
-```jsonc
-// composer.json - the repositories URL does NOT change
-"require": { "shirahcan/ai-client": "^1.0" }
-```
-
-Then, at your own pace: `Shirahcan\AiWaterfall\` -> `Shirahcan\AiClient\`,
+The old names (`Shirahcan\AiWaterfall\*`, `AiWaterfallClient`, `FakeAiWaterfall`,
+`config('ai-waterfall.*')`) are GONE as of 1.17.0. The `compat.php` aliases were removed once
+a sweep of every consuming product found zero uses. If a
+product still has one, rename it: `Shirahcan\AiWaterfall\` -> `Shirahcan\AiClient\`,
 `AiWaterfallClient` -> `AiClient`, `FakeAiWaterfall` -> `FakeAiClient`,
 `config('ai-waterfall.*')` -> `config('ai-client.*')`. The env var names are unchanged.
 
-⚠ **`class_alias` is an alias, not a subclass, and that distinction is the point.** The old
-name is the SAME class, so a `catch (Shirahcan\AiWaterfall\Exceptions\AiUnavailableException)`
-still catches what the new code throws. `class Old extends New` would NOT: the thrown object
-would be the parent, the old catch would never match, and every product's degrade path would
-silently stop running at exactly the moment it was needed.
-
-⚠ **The container needs the old name too, and the alias alone does not give it.**
-`app(AiWaterfallClient::class)` passes the container the literal string
-`Shirahcan\AiWaterfall\AiWaterfallClient`, because `::class` is compiled from the source text
-and never consults an alias. `AiClientServiceProvider` binds that string explicitly; without
-it the container would fall back to reflection and construct a client with no base URL, no
-trust key and no timeout.
+⚠ **Removed in a minor, deliberately.** Removing public names is breaking by the book, but a
+major would have reached nobody (`^1` excludes `2.0`) while the zero-use sweep shows nothing
+breaks. The caret delivering it is the point (see below).
 
 ⚠ **1.0 is for the caret, not for tidiness.** On a 0.x package `^0.4` **excludes** `0.5.0`,
 so a release reached nobody until four `composer.json` files were hand-edited. That is
