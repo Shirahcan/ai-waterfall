@@ -521,7 +521,25 @@ class FakeAiClient extends AiClient
             throw new AiUnavailableException('ai-service is unreachable: the fake was told to pretend so.');
         }
 
-        return $this->conversations ??= new FakeAiConversations();
+        if ($this->conversations === null) {
+            $this->conversations = new FakeAiConversations();
+            // The service erases memory with a person's conversations; so does the fake.
+            $this->conversations->memory = $this->memory();
+        }
+
+        return $this->conversations;
+    }
+
+    private ?FakeAiMemoryStore $memoryStore = null;
+
+    /** The memory store, faked: one instance per fake client, shared by every call. */
+    public function memory(): FakeAiMemoryStore
+    {
+        if ($this->conversationsUnavailable) {
+            throw new AiUnavailableException('ai-service is unreachable: the fake was told to pretend so.');
+        }
+
+        return $this->memoryStore ??= new FakeAiMemoryStore();
     }
 
     /**

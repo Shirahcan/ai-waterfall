@@ -52,6 +52,9 @@ class FakeAiConversations extends AiConversations
      */
     public int $batchReads = 0;
 
+    /** Linked by FakeAiClient so erasing a person also forgets them, as the service does. */
+    public ?FakeAiMemoryStore $memory = null;
+
     private int $sequence = 0;
 
     private string $product;
@@ -429,7 +432,7 @@ class FakeAiConversations extends AiConversations
     public function erase(string $conversationId): array
     {
         if (! isset($this->threads[$conversationId])) {
-            return ['erased' => false, 'conversations' => 0, 'turns' => 0];
+            return ['erased' => false, 'conversations' => 0, 'turns' => 0, 'memories' => 0];
         }
 
         $turns = count($this->turns[$conversationId] ?? []);
@@ -441,13 +444,16 @@ class FakeAiConversations extends AiConversations
 
         $this->writes[] = ['erase' => $conversationId];
 
-        return ['erased' => true, 'conversations' => 1, 'turns' => $turns];
+        return ['erased' => true, 'conversations' => 1, 'turns' => $turns, 'memories' => 0];
     }
 
-    /** @return array{erased: bool, conversations: int, turns: int} */
+    /** @return array{erased: bool, conversations: int, turns: int, memories: int} */
     public function eraseForOwner(string $ownerRef): array
     {
-        return $this->eraseWhere(fn (array $row) => $row['owner_ref'] === $ownerRef);
+        $receipt = $this->eraseWhere(fn (array $row) => $row['owner_ref'] === $ownerRef);
+        $receipt['memories'] = $this->memory?->clear($ownerRef) ?? 0;
+
+        return $receipt;
     }
 
     /** @return array{erased: bool, conversations: int, turns: int} */
@@ -726,7 +732,7 @@ class FakeAiConversations extends AiConversations
             $this->votes = array_filter($this->votes, fn ($v) => $v['conversation_id'] !== $id);
         }
 
-        return ['erased' => true, 'conversations' => $threads, 'turns' => $turns];
+        return ['erased' => true, 'conversations' => $threads, 'turns' => $turns, 'memories' => 0];
     }
 
     private function resummarise(string $conversationId): void

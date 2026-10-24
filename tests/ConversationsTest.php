@@ -231,7 +231,7 @@ class ConversationsTest extends TestCase
         $this->assertSame('/api/v1/conversations', $this->sent[0]->getUri()->getPath());
         $this->assertStringContainsString('owner_ref=u-9', urldecode($this->sent[0]->getUri()->getQuery()));
 
-        $this->assertSame(['erased' => true, 'conversations' => 3, 'turns' => 17], $receipt);
+        $this->assertSame(['erased' => true, 'conversations' => 3, 'turns' => 17, 'memories' => 0], $receipt);
     }
 
     public function test_an_erasure_by_subject_carries_its_own_filter(): void
@@ -533,7 +533,7 @@ class ConversationsTest extends TestCase
 
         $receipt = $ai->conversations()->eraseForOwner('u-9');
 
-        $this->assertSame(['erased' => true, 'conversations' => 1, 'turns' => 1], $receipt);
+        $this->assertSame(['erased' => true, 'conversations' => 1, 'turns' => 1, 'memories' => 0], $receipt);
         $this->assertSame([$other->id], array_keys($ai->conversations()->byIds([$theirs->id, $other->id])));
     }
 }

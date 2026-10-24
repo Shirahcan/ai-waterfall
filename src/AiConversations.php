@@ -502,7 +502,7 @@ class AiConversations
 
     /**
      * @param array<string, mixed> $payload
-     * @return array{erased: bool, conversations: int, turns: int}
+     * @return array{erased: bool, conversations: int, turns: int, memories: int}
      */
     private function receipt(array $payload): array
     {
@@ -510,6 +510,8 @@ class AiConversations
             'erased'        => (bool) ($payload['erased'] ?? false),
             'conversations' => (int) ($payload['conversations'] ?? 0),
             'turns'         => (int) ($payload['turns'] ?? 0),
+            // P19e: erasing a person also erases what was remembered about them.
+            'memories'      => (int) ($payload['memories'] ?? 0),
         ];
     }
 }

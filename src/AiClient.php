@@ -947,6 +947,15 @@ class AiClient
     }
 
     /**
+     * What an assistant remembers about a person (P19e). Encrypted, scoped to this product's
+     * trust key, and erased with the person's conversations.
+     */
+    public function memory(): AiMemoryStore
+    {
+        return new AiMemoryStore($this);
+    }
+
+    /**
      * The estate's AI vault: credentials, clearances, caps, the kill switch and
      * the trust keys other products call with.
      *
