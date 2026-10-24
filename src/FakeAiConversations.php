@@ -40,6 +40,9 @@ class FakeAiConversations extends AiConversations
     /** @var list<array<string, mixed>> every write, in order, for assertions */
     public array $writes = [];
 
+    /** @var array<string, array<string, mixed>> "turn|voter" => vote, as the service holds them */
+    public array $votes = [];
+
     /**
      * How many BATCH READS have happened.
      *
@@ -433,6 +436,9 @@ class FakeAiConversations extends AiConversations
 
         unset($this->threads[$conversationId], $this->turns[$conversationId]);
 
+        // The service cascades; a fake that kept the votes would hide an erasure bug.
+        $this->votes = array_filter($this->votes, fn ($v) => $v['conversation_id'] !== $conversationId);
+
         $this->writes[] = ['erase' => $conversationId];
 
         return ['erased' => true, 'conversations' => 1, 'turns' => $turns];
@@ -451,6 +457,111 @@ class FakeAiConversations extends AiConversations
     }
 
     /** @return array<string, mixed> */
+    /**
+     * ⚠ REFUSES WHAT THE SERVICE REFUSES. A fake that accepted a vote on a person's own
+     * question, or a reason on a thumbs-up, would turn a product's test suite into evidence for
+     * behaviour production rejects with a 404 or a 422.
+     */
+    public function rate(
+        string $conversationId,
+        string $turnId,
+        string $voterRef,
+        string $sentiment,
+        ?string $reasonCode = null,
+        ?string $reasonText = null,
+        ?string $clientRef = null,
+        ?\DateTimeInterface $occurredAt = null,
+    ): array {
+        $turn = null;
+
+        foreach ($this->turns[$conversationId] ?? [] as $row) {
+            if ($row['id'] === $turnId) {
+                $turn = $row;
+            }
+        }
+
+        if ($turn === null || $turn['role'] !== 'assistant') {
+            throw new \RuntimeException('ai-service answered 404 no_such_turn: This product holds no assistant answer with that id in that conversation.');
+        }
+
+        if (! in_array($sentiment, ['positive', 'negative'], true)) {
+            throw new \RuntimeException('ai-service answered 422: sentiment must be positive or negative.');
+        }
+
+        if ($reasonCode !== null && $reasonCode !== '') {
+            if ($sentiment === 'positive') {
+                throw new \RuntimeException('ai-service answered 422: a reason is only valid on a thumbs-down.');
+            }
+
+            if (! in_array($reasonCode, self::FEEDBACK_REASONS, true)) {
+                throw new \RuntimeException("ai-service answered 422: unknown reason code {$reasonCode}.");
+            }
+        }
+
+        $key = $turnId . '|' . $voterRef;
+        $existing = $this->votes[$key] ?? null;
+
+        $vote = [
+            'id'              => $existing['id'] ?? $this->nextId('vote'),
+            'conversation_id' => $conversationId,
+            'turn_id'         => $turnId,
+            'voter_ref'       => $voterRef,
+            'sentiment'       => $sentiment,
+            'reason_code'     => ($reasonCode ?? '') === '' ? null : $reasonCode,
+            'reason_text'     => trim((string) $reasonText) === '' ? null : $reasonText,
+            'client_ref'      => $clientRef ?? ($existing['client_ref'] ?? null),
+            'created_at'      => $existing['created_at']
+                ?? ($occurredAt?->format(\DateTimeInterface::ATOM) ?? $this->now()),
+            'updated_at'      => $this->now(),
+        ];
+
+        $this->votes[$key] = $vote;
+        $this->writes[] = ['rate' => $turnId, 'voter' => $voterRef, 'sentiment' => $sentiment];
+
+        return $vote;
+    }
+
+    public function feedbackStats(?\DateTimeInterface $since = null): array
+    {
+        $groups = [];
+
+        foreach ($this->votes as $vote) {
+            $audience = $this->threads[$vote['conversation_id']]['audience'] ?? null;
+            $key = ($audience ?? '') . '|' . $vote['sentiment'] . '|' . ($vote['reason_code'] ?? '');
+            $groups[$key] ??= [
+                'audience'    => $audience,
+                'sentiment'   => $vote['sentiment'],
+                'reason_code' => $vote['reason_code'],
+                'votes'       => 0,
+            ];
+            $groups[$key]['votes']++;
+        }
+
+        return array_values($groups);
+    }
+
+    public function feedback(?string $sentiment = null, ?\DateTimeInterface $since = null, int $limit = 50): array
+    {
+        $rows = [];
+
+        foreach ($this->votes as $vote) {
+            if ($sentiment !== null && $vote['sentiment'] !== $sentiment) {
+                continue;
+            }
+
+            $answer = null;
+            foreach ($this->turns[$vote['conversation_id']] ?? [] as $row) {
+                if ($row['id'] === $vote['turn_id']) {
+                    $answer = $row['body'] ?? null;
+                }
+            }
+
+            $rows[] = $vote + ['answer' => $answer];
+        }
+
+        return array_slice(array_reverse($rows), 0, $limit);
+    }
+
     public function stats(int $days = 30): array
     {
         $turns = 0;
@@ -612,6 +723,7 @@ class FakeAiConversations extends AiConversations
             $threads++;
 
             unset($this->threads[$id], $this->turns[$id]);
+            $this->votes = array_filter($this->votes, fn ($v) => $v['conversation_id'] !== $id);
         }
 
         return ['erased' => true, 'conversations' => $threads, 'turns' => $turns];

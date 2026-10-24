@@ -405,6 +405,102 @@ class AiConversations
     }
 
     /**
+     * The reason codes the shared rating control offers (`ASSISTANT_FEEDBACK_REASONS` in
+     * `@shirahcan/ai-ui`). The service refuses anything else, and so does the fake.
+     */
+    public const FEEDBACK_REASONS = [
+        'wrong_topic',
+        'outdated_info',
+        'didnt_understand',
+        'missing_detail',
+        'unhelpful_other',
+    ];
+
+    /**
+     * Record one person's verdict on one assistant answer (P19a).
+     *
+     * ⚠ KEYED ON THE SERVICE'S TURN ID, NOT THE PRODUCT'S MESSAGE ID. Before P19a each product
+     * kept its own feedback table keyed to its own ids, and Portify's `AssistantMessage`
+     * records what happened when the two were confused: every vote a silent 404. A product
+     * that only has its own id must resolve the service turn first (the turn's `client_ref`).
+     *
+     * ⚠ CALLING IT AGAIN FOR THE SAME (turn, voter) CHANGES THE VOTE. A person who clicks
+     * thumbs-down and then thumbs-up has changed their mind, not voted twice.
+     *
+     * ⚠ A REASON IS ONLY VALID ON A THUMBS-DOWN, and only one of `FEEDBACK_REASONS`.
+     *
+     * @return array<string, mixed> the stored vote
+     */
+    public function rate(
+        string $conversationId,
+        string $turnId,
+        string $voterRef,
+        string $sentiment,
+        ?string $reasonCode = null,
+        ?string $reasonText = null,
+        ?string $clientRef = null,
+        ?\DateTimeInterface $occurredAt = null,
+    ): array {
+        $body = ['voter_ref' => $voterRef, 'sentiment' => $sentiment];
+
+        if ($reasonCode !== null && $reasonCode !== '') {
+            $body['reason_code'] = $reasonCode;
+        }
+
+        if ($reasonText !== null && trim($reasonText) !== '') {
+            $body['reason_text'] = $reasonText;
+        }
+
+        if ($clientRef !== null && $clientRef !== '') {
+            $body['client_ref'] = $clientRef;
+        }
+
+        if ($occurredAt !== null) {
+            $body['occurred_at'] = $occurredAt->format(\DateTimeInterface::ATOM);
+        }
+
+        $payload = $this->client->postJson(
+            "api/v1/conversations/{$conversationId}/turns/{$turnId}/feedback",
+            $body,
+        );
+
+        return (array) ($payload['feedback'] ?? []);
+    }
+
+    /**
+     * Votes grouped by audience, sentiment and reason, without reading a note.
+     *
+     * @return list<array{audience: ?string, sentiment: string, reason_code: ?string, votes: int}>
+     */
+    public function feedbackStats(?\DateTimeInterface $since = null): array
+    {
+        $query = $since === null ? [] : ['since' => $since->format(\DateTimeInterface::ATOM)];
+
+        return array_values((array) ($this->client->getJson('api/v1/conversations/feedback/stats', $query)['rows'] ?? []));
+    }
+
+    /**
+     * Recent votes with the answer each one judged. Decrypts, so it pages; ask
+     * `feedbackStats()` when the answer is a count.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function feedback(?string $sentiment = null, ?\DateTimeInterface $since = null, int $limit = 50): array
+    {
+        $query = ['limit' => $limit];
+
+        if ($sentiment !== null) {
+            $query['sentiment'] = $sentiment;
+        }
+
+        if ($since !== null) {
+            $query['since'] = $since->format(\DateTimeInterface::ATOM);
+        }
+
+        return array_values((array) ($this->client->getJson('api/v1/conversations/feedback', $query)['feedback'] ?? []));
+    }
+
+    /**
      * @param array<string, mixed> $payload
      * @return array{erased: bool, conversations: int, turns: int}
      */
