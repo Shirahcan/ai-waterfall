@@ -366,6 +366,55 @@ class FakeAiClient extends AiClient
 
 
 
+    /*
+    |--------------------------------------------------------------------------
+    | Transcription
+    |--------------------------------------------------------------------------
+    */
+
+    /** @var array<int, array<string, mixed>|Throwable> */
+    private array $transcriptions = [];
+
+    /** @var list<array{filename: string, task: string, bytes: int}> What was sent to be transcribed. */
+    public array $transcribed = [];
+
+    public function queueTranscription(string $text, ?float $durationSeconds = null, string $provider = 'fake-whisper'): static
+    {
+        $this->transcriptions[] = [
+            'text' => $text, 'duration_seconds' => $durationSeconds, 'language' => null,
+            'provider' => $provider, 'latency_ms' => 10,
+        ];
+
+        return $this;
+    }
+
+    public function queueTranscriptionFailure(Throwable $e): static
+    {
+        $this->transcriptions[] = $e;
+
+        return $this;
+    }
+
+    /**
+     * ⚠ AN EMPTY QUEUE REFUSES, like the real service with no cleared key. A test that forgot to
+     * queue a transcript exercises the refusal path instead of receiving invented speech.
+     */
+    public function transcribe(string $bytes, string $filename, string $task, ?string $language = null): array
+    {
+        $this->transcribed[] = ['filename' => $filename, 'task' => $task, 'bytes' => strlen($bytes)];
+        $next = array_shift($this->transcriptions);
+
+        if ($next === null) {
+            throw new \Shirahcan\AiClient\Exceptions\AllProvidersFailedException('No transcription credential cleared for personal data is configured.', []);
+        }
+
+        if ($next instanceof Throwable) {
+            throw $next;
+        }
+
+        return $next;
+    }
+
     /** @param array<int, array<string, mixed>> $results */
     public function queueSearch(array $results, string $provider = 'fake-search'): static
     {

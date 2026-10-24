@@ -788,6 +788,13 @@ class AiClient
                 []
             ),
 
+            // Same shape as search: the remedy is a `kind = transcription` key cleared for personal
+            // data, not anything on the generation bench.
+            'no_transcription_credential' => new AllProvidersFailedException(
+                $decoded['message'] ?? 'No transcription credential cleared for personal data is configured.',
+                []
+            ),
+
             /*
              * ⚠ A QUERY THAT COULD NOT BE EMBEDDED IS NOT AN OUTAGE OF THIS
              * SERVICE, and the remedy is the same as every provider refusing:
@@ -831,6 +838,56 @@ class AiClient
     public function research(): AiResearch
     {
         return new AiResearch($this);
+    }
+
+    /**
+     * Speech to text through the vault (service P20f2, 2026-10-24).
+     *
+     * ⚠ ONLY KEYS CLEARED FOR PERSONAL DATA ARE USED. A recording is a person speaking, so with no
+     * cleared transcription key the service refuses (AllProvidersFailedException) rather than send
+     * the audio to a provider nobody decided may hold it.
+     *
+     * @return array{text: string, duration_seconds: ?float, language: ?string, provider: string, latency_ms: int}
+     *
+     * @throws AiUnavailableException|AllProvidersFailedException|AiOverBudgetException
+     */
+    public function transcribe(string $bytes, string $filename, string $task, ?string $language = null): array
+    {
+        $multipart = [
+            ['name' => 'task', 'contents' => $task],
+            ['name' => 'audio', 'contents' => $bytes, 'filename' => $filename],
+        ];
+
+        if ($language !== null && $language !== '') {
+            $multipart[] = ['name' => 'language', 'contents' => $language];
+        }
+
+        try {
+            $response = $this->http->post('api/v1/transcribe', [
+                'headers'     => $this->headers(),
+                'multipart'   => $multipart,
+                'http_errors' => false,
+                // Audio takes longer than a prompt; the provider's own limit is the real ceiling.
+                'timeout'     => max($this->timeout, 180),
+            ]);
+        } catch (Throwable $e) {
+            throw new AiUnavailableException('ai-service is unreachable: '.$e->getMessage(), previous: $e);
+        }
+
+        $status = $response->getStatusCode();
+        $decoded = json_decode((string) $response->getBody(), true) ?: [];
+
+        if ($status >= 200 && $status < 300) {
+            return [
+                'text'             => (string) ($decoded['text'] ?? ''),
+                'duration_seconds' => isset($decoded['duration_seconds']) ? (float) $decoded['duration_seconds'] : null,
+                'language'         => isset($decoded['language']) ? (string) $decoded['language'] : null,
+                'provider'         => (string) ($decoded['provider'] ?? ''),
+                'latency_ms'       => (int) ($decoded['latency_ms'] ?? 0),
+            ];
+        }
+
+        throw $this->errorFor($status, $decoded);
     }
 
     /**
