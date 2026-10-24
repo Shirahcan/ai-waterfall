@@ -75,7 +75,10 @@ final class ContextFacts
      * sources, and the check costs nothing.
      *
      * ⚠ A NUMBER MUST APPEAR AS A NUMBER. "3" inside "13" or "2023" is not the fact being cited.
-     * A list value ("Welder, Driver, Cook") counts when any one of its items appears.
+     * A list value ("Welder, Driver, Cook", or one item per line) counts when any one of its items
+     * appears, and an item counts when it appears whole OR when most of its words do: "Backend
+     * Engineer at Acme Inc.: interviewing" is cited by "your Backend Engineer application is at
+     * the interview stage", and an exact-match rule would call that ungrounded.
      *
      * @param  list<ContextFact>  $facts
      * @return list<ContextFact>
@@ -90,7 +93,7 @@ final class ContextFacts
 
         return array_values(array_filter($facts, static function (ContextFact $fact) use ($text): bool {
             foreach (self::citable($fact->value) as $piece) {
-                if (self::appears($piece, $text)) {
+                if (self::appears($piece, $text) || self::mostlyAppears($piece, $text)) {
                     return true;
                 }
             }
@@ -130,12 +133,32 @@ final class ContextFacts
             return [];
         }
 
-        $pieces = preg_split('/\s*[,;|]\s*/u', $value) ?: [$value];
+        $pieces = preg_split('/\s*(?:[,;|\n]|^\s*[-*]\s+)\s*/mu', $value) ?: [$value];
 
         return array_values(array_filter(
             array_map(static fn (string $p): string => self::normalise($p), array_merge([$value], $pieces)),
             static fn (string $p): bool => $p !== '' && (mb_strlen($p) >= 3 || preg_match('/^\d+$/', $p) === 1),
         ));
+    }
+
+    /**
+     * Most of an item's words, for an item a reply paraphrases rather than quotes.
+     *
+     * ⚠ AT LEAST TWO WORDS AND AT LEAST HALF, so one shared word ("application", "role") never
+     * grounds a reply on an item it did not use.
+     */
+    private static function mostlyAppears(string $piece, string $text): bool
+    {
+        preg_match_all('/\p{L}{4,}/u', $piece, $m);
+        $words = array_values(array_unique(array_diff($m[0], self::FILLER)));
+
+        if (count($words) < 2) {
+            return false;
+        }
+
+        $hits = count(array_filter($words, static fn (string $w): bool => self::appears($w, $text)));
+
+        return $hits >= 2 && $hits * 2 >= count($words);
     }
 
     private static function appears(string $piece, string $text): bool

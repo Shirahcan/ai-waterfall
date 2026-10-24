@@ -92,4 +92,20 @@ class ContextFactsTest extends TestCase
         $this->assertSame([], ContextFacts::used([new ContextFact('a', 'A', '1')], '   '));
         $this->assertFalse(ContextFacts::drawsOn('', 'anything at all here'));
     }
+
+    public function test_a_paraphrased_list_item_still_counts(): void
+    {
+        $facts = [new ContextFact('candidate.applications.list', 'Your applications and their stage', "- Backend Engineer at Acme Inc.: interviewing\n- Data Analyst at Beta Ltd: offer")];
+
+        $used = ContextFacts::used($facts, 'Your Backend Engineer application is at the interview stage.');
+
+        $this->assertSame(['candidate.applications.list'], ContextFacts::keys($used));
+    }
+
+    public function test_one_shared_word_does_not_ground_a_reply(): void
+    {
+        $facts = [new ContextFact('candidate.applications.list', 'Your applications', '- Backend Engineer at Acme Inc.: interviewing')];
+
+        $this->assertSame([], ContextFacts::used($facts, 'An engineer in Mongolia needs a work permit.'));
+    }
 }
