@@ -347,6 +347,21 @@ class AiConversations
     }
 
     /**
+     * Record what became of a turn: a confirm card's state (P21a).
+     *
+     * ⚠ ONLY THE STATE. The body is the record of what was said and the service will not
+     * rewrite it. Null clears the state.
+     *
+     * @param array<string, mixed>|null $state
+     */
+    public function updateTurnState(string $conversationId, string $turnId, ?array $state): ConversationTurn
+    {
+        $payload = $this->client->patchJson("api/v1/conversations/{$conversationId}/turns/{$turnId}", ['state' => $state]);
+
+        return ConversationTurn::fromArray((array) ($payload['turn'] ?? []));
+    }
+
+    /**
      * Erase ONE thread and its turns, and get a receipt.
      *
      * ⚠ THIS IS AN OBLIGATION, NOT A CONVENIENCE. Moving the transcript into the service did

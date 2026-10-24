@@ -428,6 +428,26 @@ class FakeAiConversations extends AiConversations
         return Conversation::fromArray($this->threads[$conversationId]);
     }
 
+    /**
+     * ⚠ ONLY THE STATE CHANGES, and a turn of ANOTHER thread is not found, exactly as the
+     * service scopes it: a product that passed the wrong conversation id must fail here too.
+     */
+    public function updateTurnState(string $conversationId, string $turnId, ?array $state): ConversationTurn
+    {
+        $this->mustHold($conversationId);
+
+        foreach ($this->turns[$conversationId] as $i => $turn) {
+            if ($turn['id'] === $turnId) {
+                $this->turns[$conversationId][$i]['state'] = $state;
+                $this->writes[] = ['update_turn_state' => $turnId, 'state' => $state];
+
+                return ConversationTurn::fromArray($this->turns[$conversationId][$i]);
+            }
+        }
+
+        throw new RuntimeException("no_such_turn: conversation {$conversationId} holds no turn with id {$turnId}.");
+    }
+
     /** @return array{erased: bool, conversations: int, turns: int} */
     public function erase(string $conversationId): array
     {

@@ -344,6 +344,37 @@ class ConversationsTest extends TestCase
     |--------------------------------------------------------------------------
     */
 
+    public function test_a_turn_state_update_sends_only_the_state_and_reads_it_back(): void
+    {
+        $ai = $this->client([$this->json(['turn' => [
+            'id' => 't-1', 'role' => 'assistant', 'body' => 'Shall I send it?', 'state' => ['status' => 'confirmed'],
+        ]])]);
+
+        $turn = $ai->conversations()->updateTurnState('c-1', 't-1', ['status' => 'confirmed']);
+
+        $this->assertSame('PATCH', $this->sent[0]->getMethod());
+        $this->assertSame('/api/v1/conversations/c-1/turns/t-1', $this->sent[0]->getUri()->getPath());
+        $this->assertSame(['state' => ['status' => 'confirmed']], $this->body());
+        $this->assertSame(['status' => 'confirmed'], $turn->state);
+        $this->assertSame('Shall I send it?', $turn->body);
+    }
+
+    public function test_the_fake_changes_only_the_state_and_scopes_the_turn_to_its_thread(): void
+    {
+        $fake = (new FakeAiClient())->conversations();
+        $a = $fake->start(ownerRef: 'u-1');
+        $b = $fake->start(ownerRef: 'u-1');
+        $turn = $fake->append($a->id, ConversationTurn::ROLE_ASSISTANT, 'Shall I send it?');
+
+        $updated = $fake->updateTurnState($a->id, $turn->id, ['status' => 'done']);
+        $this->assertSame(['status' => 'done'], $updated->state);
+        $this->assertSame('Shall I send it?', $fake->read($a->id)->turns[0]->body);
+        $this->assertSame(['status' => 'done'], $fake->read($a->id)->turns[0]->state);
+
+        $this->expectException(RuntimeException::class);
+        $fake->updateTurnState($b->id, $turn->id, ['status' => 'cancelled']);
+    }
+
     public function test_the_fake_returns_the_first_turn_for_a_repeated_client_ref(): void
     {
         $ai = new FakeAiClient;

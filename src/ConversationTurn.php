@@ -79,6 +79,15 @@ final class ConversationTurn
          * already.
          */
         public readonly ?Conversation $conversation = null,
+
+        /*
+         * ⚠ THE ONE PART OF A TURN THAT CHANGES (P21a). A confirm card is said once and then
+         * becomes confirmed, done or cancelled; the body never changes, this does. Set it with
+         * `conversations()->updateTurnState()`. Last, for the same constructor-contract reason.
+         *
+         * @var array<string, mixed>|null
+         */
+        public readonly ?array $state = null,
     ) {}
 
     /** @param array<string, mixed> $a */
@@ -103,6 +112,7 @@ final class ConversationTurn
             conversationId: ($a['conversation_id'] ?? null) === null ? null : (string) $a['conversation_id'],
             audience: ($a['audience'] ?? null) === null ? null : (string) $a['audience'],
             ownerRef: ($a['owner_ref'] ?? null) === null ? null : (string) $a['owner_ref'],
+            state: is_array($a['state'] ?? null) ? $a['state'] : null,
         );
     }
 
@@ -145,6 +155,7 @@ final class ConversationTurn
             audience: $turn->audience,
             ownerRef: $turn->ownerRef,
             conversation: Conversation::fromArray($conversation),
+            state: $turn->state,
         );
     }
 
