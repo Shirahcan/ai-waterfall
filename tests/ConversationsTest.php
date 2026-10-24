@@ -375,6 +375,33 @@ class ConversationsTest extends TestCase
         $fake->updateTurnState($b->id, $turn->id, ['status' => 'cancelled']);
     }
 
+    public function test_a_feedback_page_sends_only_the_filters_it_was_given(): void
+    {
+        $ai = $this->client([$this->json(['feedback' => [['id' => 'v-1']], 'meta' => ['page' => 2, 'per_page' => 10, 'total' => 11, 'last_page' => 2]])]);
+
+        $page = $ai->conversations()->feedbackPage(['audience' => 'client', 'search' => '', 'bogus' => 'x'], 2, 10);
+
+        parse_str($this->sent[0]->getUri()->getQuery(), $query);
+        $this->assertSame(['audience' => 'client', 'page' => '2', 'per_page' => '10'], $query);
+        $this->assertSame(11, $page['meta']['total']);
+        $this->assertSame('v-1', $page['feedback'][0]['id']);
+    }
+
+    public function test_the_fake_feedback_page_filters_like_the_service(): void
+    {
+        $fake = (new FakeAiClient())->conversations();
+        foreach (['client' => 'The LMIA fee is $1,000.', 'consultant' => 'Biometrics last ten years.'] as $audience => $answer) {
+            $thread = $fake->start(ownerRef: 'u-1', audience: $audience);
+            $turn = $fake->append($thread->id, ConversationTurn::ROLE_ASSISTANT, $answer);
+            $fake->rate($thread->id, $turn->id, 'user:7', 'negative', 'outdated_info');
+        }
+
+        $this->assertSame(1, $fake->feedbackPage(['audience' => 'client'])['meta']['total']);
+        $this->assertSame('Biometrics last ten years.', $fake->feedbackPage(['search' => 'biometrics'])['feedback'][0]['answer']);
+        $this->assertSame(2000, $fake->feedbackPage(['search' => 'x'])['meta']['searched']);
+        $this->assertCount(1, $fake->feedbackPage([], 2, 1)['feedback']);
+    }
+
     public function test_the_fake_returns_the_first_turn_for_a_repeated_client_ref(): void
     {
         $ai = new FakeAiClient;

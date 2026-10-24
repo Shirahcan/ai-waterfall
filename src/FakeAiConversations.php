@@ -566,6 +566,59 @@ class FakeAiConversations extends AiConversations
         return array_values($groups);
     }
 
+    /**
+     * ⚠ THE SAME FILTERS AND SHAPE AS THE SERVICE, so a product's triage-screen test cannot pass on
+     * a filter production ignores.
+     */
+    public function feedbackPage(array $filters = [], int $page = 1, int $perPage = 25): array
+    {
+        $rows = [];
+
+        foreach (array_reverse($this->votes) as $vote) {
+            $thread = $this->threads[$vote['conversation_id']] ?? [];
+            $turn = null;
+            foreach ($this->turns[$vote['conversation_id']] ?? [] as $row) {
+                if ($row['id'] === $vote['turn_id']) {
+                    $turn = $row;
+                }
+            }
+
+            $row = $vote + [
+                'answer'     => $turn['body'] ?? null,
+                'structured' => $turn['structured'] ?? null,
+                'audience'   => $thread['audience'] ?? null,
+                'owner_ref'  => $thread['owner_ref'] ?? null,
+            ];
+
+            foreach (['sentiment', 'audience', 'reason_code'] as $f) {
+                if (($filters[$f] ?? '') !== '' && $row[$f] !== $filters[$f]) {
+                    continue 2;
+                }
+            }
+            if (($filters['since'] ?? '') !== '' && substr((string) $row['created_at'], 0, 10) < substr((string) $filters['since'], 0, 10)) {
+                continue;
+            }
+            if (($filters['until'] ?? '') !== '' && substr((string) $row['created_at'], 0, 10) > substr((string) $filters['until'], 0, 10)) {
+                continue;
+            }
+            if (($filters['search'] ?? '') !== '' && ! str_contains(mb_strtolower((string) $row['answer']), mb_strtolower((string) $filters['search']))) {
+                continue;
+            }
+
+            $rows[] = $row;
+        }
+
+        $meta = [
+            'page' => $page, 'per_page' => $perPage, 'total' => count($rows),
+            'last_page' => max(1, (int) ceil(count($rows) / $perPage)),
+        ];
+        if (($filters['search'] ?? '') !== '') {
+            $meta['searched'] = 2000;
+        }
+
+        return ['feedback' => array_slice($rows, ($page - 1) * $perPage, $perPage), 'meta' => $meta];
+    }
+
     public function feedback(?string $sentiment = null, ?\DateTimeInterface $since = null, int $limit = 50): array
     {
         $rows = [];

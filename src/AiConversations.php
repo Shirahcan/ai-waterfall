@@ -347,6 +347,31 @@ class AiConversations
     }
 
     /**
+     * One page of votes for a triage screen (P21c): the service is the only copy of a vote, so a
+     * product's admin list reads here rather than from a table of its own.
+     *
+     * ⚠ `search` READS THE DECRYPTED ANSWER over the newest votes only; `meta.searched` says how
+     * many, so a console can say so rather than imply it searched everything.
+     *
+     * @param  array{sentiment?: string, audience?: string, reason_code?: string, since?: string, until?: string, search?: string}  $filters
+     * @return array{feedback: list<array<string, mixed>>, meta: array{page: int, per_page: int, total: int, last_page: int, searched?: int}}
+     */
+    public function feedbackPage(array $filters = [], int $page = 1, int $perPage = 25): array
+    {
+        $query = array_filter(
+            array_intersect_key($filters, array_flip(['sentiment', 'audience', 'reason_code', 'since', 'until', 'search'])),
+            fn ($v) => $v !== null && $v !== '',
+        ) + ['page' => $page, 'per_page' => $perPage];
+
+        $payload = $this->client->getJson('api/v1/conversations/feedback', $query);
+
+        return [
+            'feedback' => array_values((array) ($payload['feedback'] ?? [])),
+            'meta'     => (array) ($payload['meta'] ?? ['page' => $page, 'per_page' => $perPage, 'total' => 0, 'last_page' => 1]),
+        ];
+    }
+
+    /**
      * Record what became of a turn: a confirm card's state (P21a).
      *
      * ⚠ ONLY THE STATE. The body is the record of what was said and the service will not
