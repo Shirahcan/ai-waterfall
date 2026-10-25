@@ -180,6 +180,143 @@ class FakeAiKnowledge extends AiKnowledge
         ];
     }
 
+    /** @var array<string, array<string, mixed>> slug => entry, as the service stores it */
+    public array $entryRows = [];
+
+    public function syncEntries(array $entries, string $task = 'knowledge.embed.document'): array
+    {
+        $synced = 0;
+        $unchanged = 0;
+
+        foreach ($entries as $e) {
+            $row = [
+                'slug' => (string) $e['slug'],
+                'status' => (string) ($e['status'] ?? 'published'),
+                'audiences' => isset($e['audiences']) && $e['audiences'] !== [] ? array_values($e['audiences']) : null,
+                'expires_at' => $e['expires_at'] ?? null,
+                'question' => (string) $e['question'],
+                'aliases' => array_values((array) ($e['aliases'] ?? [])),
+                'description' => $e['description'] ?? null,
+                'answer' => (string) $e['answer'],
+                'extra' => (array) ($e['extra'] ?? []),
+            ];
+
+            if (($this->entryRows[$row['slug']] ?? null) == $row) {
+                $unchanged++;
+            } else {
+                $this->entryRows[$row['slug']] = $row;
+                $synced++;
+            }
+        }
+
+        return ['synced' => $synced, 'unchanged' => $unchanged];
+    }
+
+    public function retireEntries(array $keepSlugs, bool $confirmEmpty = false): int
+    {
+        if ($keepSlugs === [] && ! $confirmEmpty) {
+            throw new \RuntimeException('ai-service answered 422 refusing_to_empty_the_knowledge');
+        }
+
+        $before = count($this->entryRows);
+        $this->entryRows = array_intersect_key($this->entryRows, array_flip($keepSlugs));
+
+        return $before - count($this->entryRows);
+    }
+
+    /**
+     * ⚠ THE SAME FACETS AND LEXICAL SCORING AS THE SERVICE (no semantic half: there are no vectors),
+     * so a product's retrieval test cannot pass on an expired or wrong-audience entry.
+     */
+    public function search(string $query, ?string $audience, int $limit = 5): array
+    {
+        $tokens = self::tokens($query);
+        $out = [];
+
+        foreach ($this->servable($audience) as $row) {
+            $aliases = [];
+            foreach ($row['aliases'] as $alias) {
+                $aliases = array_merge($aliases, self::tokens((string) $alias));
+            }
+            $score = 0.60 * self::overlap($tokens, self::tokens($row['question']))
+                + 0.30 * self::overlap($tokens, $aliases)
+                + 0.10 * self::overlap($tokens, self::tokens((string) $row['description']));
+
+            if ($score >= 0.12) {
+                $out[] = ['entry' => $row, 'score' => round($score, 6), 'lexical' => round($score, 6), 'semantic' => 0.0];
+            }
+        }
+
+        usort($out, fn ($a, $b) => $b['score'] <=> $a['score']);
+
+        return array_slice($out, 0, max(1, $limit));
+    }
+
+    public function entries(?string $audience = null, bool $all = false, int $page = 1, int $perPage = 50): array
+    {
+        $rows = $all ? array_values($this->entryRows) : $this->servable($audience);
+
+        return ['entries' => array_slice($rows, ($page - 1) * $perPage, $perPage), 'meta' => [
+            'page' => $page, 'last_page' => max(1, (int) ceil(count($rows) / $perPage)), 'total' => count($rows),
+        ]];
+    }
+
+    public function entry(string $slug): ?array
+    {
+        return $this->entryRows[$slug] ?? null;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function servable(?string $audience): array
+    {
+        return array_values(array_filter($this->entryRows, function (array $row) use ($audience) {
+            if ($row['status'] !== 'published') {
+                return false;
+            }
+            if ($row['expires_at'] !== null && strtotime((string) $row['expires_at']) <= time()) {
+                return false;
+            }
+
+            return $row['audiences'] === null || ($audience !== null && in_array($audience, $row['audiences'], true));
+        }));
+    }
+
+    /** @return list<string> */
+    private static function tokens(string $text): array
+    {
+        static $stop = ['a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'am', 'do', 'does', 'did', 'can', 'could', 'will', 'would', 'should',
+            'i', 'me', 'my', 'we', 'our', 'you', 'your', 'it', 'its', 'they', 'to', 'of', 'in', 'on', 'for', 'with', 'at', 'by', 'from', 'as',
+            'and', 'or', 'but', 'if', 'then', 'than', 'that', 'this', 'these', 'how', 'what', 'when', 'where', 'who', 'why', 'which',
+            'have', 'has', 'had', 'get', 'got', 'need', 'want', 'please'];
+        $parts = preg_split('/[^a-z0-9]+/u', mb_strtolower(strip_tags($text))) ?: [];
+
+        return array_values(array_filter($parts, fn ($t) => $t !== '' && strlen($t) > 1 && ! in_array($t, $stop, true)));
+    }
+
+    private static function overlap(array $asked, array $candidate): float
+    {
+        if ($asked === [] || $candidate === []) {
+            return 0.0;
+        }
+        $set = array_flip($candidate);
+        $hits = 0;
+        foreach ($asked as $token) {
+            if (isset($set[$token])) {
+                $hits++;
+                continue;
+            }
+            foreach ($candidate as $other) {
+                if (strlen($token) > 4 && strlen($other) > 4
+                    && (str_starts_with($other, substr($token, 0, -1)) || str_starts_with($token, substr($other, 0, -1)))) {
+                    $hits++;
+                    break;
+                }
+            }
+        }
+
+        return $hits / count($asked);
+    }
+
     public function status(): array
     {
         $stale = array_filter($this->chunks, fn (array $c) => $c['model'] !== $this->model);

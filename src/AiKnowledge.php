@@ -146,6 +146,82 @@ class AiKnowledge
      *
      * @return array<string, mixed>
      */
+    /*
+    |--------------------------------------------------------------------------
+    | P21f: knowledge ENTRIES, stored and searched in the service
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Publish entries with their serving facets. Batches of 50, as the service caps them.
+     *
+     * @param  list<array{slug: string, question: string, answer: string, status?: string, audiences?: ?list<string>, expires_at?: ?string, aliases?: list<string>, description?: ?string, extra?: array<string, mixed>}>  $entries
+     * @return array{synced: int, unchanged: int}
+     */
+    public function syncEntries(array $entries, string $task = 'knowledge.embed.document'): array
+    {
+        $totals = ['synced' => 0, 'unchanged' => 0];
+
+        foreach (array_chunk(array_values($entries), 50) as $batch) {
+            $result = $this->client->postJson('api/v1/knowledge/entries/sync', ['entries' => $batch, 'task' => $task]);
+            $totals['synced'] += (int) ($result['synced'] ?? 0);
+            $totals['unchanged'] += (int) ($result['unchanged'] ?? 0);
+        }
+
+        return $totals;
+    }
+
+    /** Remove every entry not in $keepSlugs. An empty list is refused unless confirmed, as for retire(). */
+    public function retireEntries(array $keepSlugs, bool $confirmEmpty = false): int
+    {
+        return (int) ($this->client->postJson('api/v1/knowledge/entries/retire', [
+            'keep'          => array_values($keepSlugs),
+            'confirm_empty' => $confirmEmpty,
+        ])['retired'] ?? 0);
+    }
+
+    /**
+     * The best SERVABLE entries for a question (published, unexpired, this audience).
+     *
+     * @return list<array{entry: array<string, mixed>, score: float, lexical: float, semantic: float}>
+     */
+    public function search(string $query, ?string $audience, int $limit = 5): array
+    {
+        return array_values((array) ($this->client->postJson('api/v1/knowledge/entries/search', array_filter([
+            'query'    => $query,
+            'audience' => $audience,
+            'limit'    => $limit,
+        ], fn ($v) => $v !== null && $v !== ''))['matches'] ?? []));
+    }
+
+    /**
+     * Browse entries. Servable only by default; `$all` includes pulled and expired ones (for review).
+     *
+     * @return array{entries: list<array<string, mixed>>, meta: array{page: int, last_page: int, total: int}}
+     */
+    public function entries(?string $audience = null, bool $all = false, int $page = 1, int $perPage = 50): array
+    {
+        $payload = $this->client->getJson('api/v1/knowledge/entries', array_filter([
+            'audience' => $audience, 'all' => $all ? 1 : null, 'page' => $page, 'per_page' => $perPage,
+        ], fn ($v) => $v !== null && $v !== ''));
+
+        return ['entries' => array_values((array) ($payload['entries'] ?? [])), 'meta' => (array) ($payload['meta'] ?? [])];
+    }
+
+    /** @return array<string, mixed>|null one entry by slug, servable or not */
+    public function entry(string $slug): ?array
+    {
+        try {
+            return (array) ($this->client->getJson('api/v1/knowledge/entries/' . rawurlencode($slug))['entry'] ?? []) ?: null;
+        } catch (Exceptions\AiRequestRefusedException $e) {
+            if ($e->status === 404) {
+                return null;
+            }
+
+            throw $e;
+        }
+    }
+
     public function status(): array
     {
         return $this->client->getJson('api/v1/knowledge');

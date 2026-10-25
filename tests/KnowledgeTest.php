@@ -53,6 +53,42 @@ class KnowledgeTest extends TestCase
         return json_decode((string) $this->sent[$i]->getBody(), true);
     }
 
+    public function test_entries_sync_in_batches_of_fifty_and_totals_add_up(): void
+    {
+        $ai = $this->client([
+            $this->json(['synced' => 50, 'unchanged' => 0]),
+            $this->json(['synced' => 1, 'unchanged' => 2]),
+        ]);
+        $entries = array_map(fn ($i) => ['slug' => "e{$i}", 'question' => "Q{$i}", 'answer' => 'A'], range(1, 53));
+
+        $this->assertSame(['synced' => 51, 'unchanged' => 2], $ai->knowledge()->syncEntries($entries));
+        $this->assertCount(50, $this->body(0)['entries']);
+        $this->assertCount(3, $this->body(1)['entries']);
+        $this->assertSame('/api/v1/knowledge/entries/sync', $this->sent[0]->getUri()->getPath());
+    }
+
+    public function test_a_missing_entry_is_null_not_an_error(): void
+    {
+        $ai = $this->client([$this->json(['error' => 'no_such_entry', 'message' => 'none'], 404)]);
+
+        $this->assertNull($ai->knowledge()->entry('nope'));
+    }
+
+    public function test_the_fake_never_serves_an_expired_pulled_or_wrong_audience_entry(): void
+    {
+        $k = (new FakeAiClient())->knowledge();
+        $k->syncEntries([
+            ['slug' => 'ok', 'question' => 'What is the LMIA fee', 'answer' => 'A', 'audiences' => ['employer']],
+            ['slug' => 'old', 'question' => 'What is the LMIA fee', 'answer' => 'A', 'expires_at' => '2001-01-01T00:00:00Z'],
+            ['slug' => 'pulled', 'question' => 'What is the LMIA fee', 'answer' => 'A', 'status' => 'unpublished'],
+            ['slug' => 'client', 'question' => 'What is the LMIA fee', 'answer' => 'A', 'audiences' => ['client']],
+        ]);
+
+        $this->assertSame(['ok'], array_column(array_column($k->search('LMIA fee', 'employer'), 'entry'), 'slug'));
+        $this->assertSame(1, $k->entries('employer')['meta']['total']);
+        $this->assertSame(4, $k->entries(null, true)['meta']['total']);
+    }
+
     public function test_sync_posts_the_entries(): void
     {
         $this->client([$this->json(['synced' => 2, 'embedded' => 1, 'skipped' => 1, 'failed' => [], 'model' => 'm'])])
