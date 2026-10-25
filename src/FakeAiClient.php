@@ -252,7 +252,13 @@ class FakeAiClient extends AiClient
     {
         $rows = array_values(array_filter($this->usageCallRows, function (array $r) use ($filters) {
             foreach (['task', 'provider', 'outcome'] as $f) {
-                if (($filters[$f] ?? '') !== '' && ($r[$f] ?? null) !== $filters[$f]) {
+                $want = (string) ($filters[$f] ?? '');
+                if ($want === '') {
+                    continue;
+                }
+                // `!x` means "anything but x", exactly as the service reads it.
+                $match = str_starts_with($want, '!') ? ($r[$f] ?? null) !== substr($want, 1) : ($r[$f] ?? null) === $want;
+                if (! $match) {
                     return false;
                 }
             }
