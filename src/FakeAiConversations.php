@@ -145,7 +145,14 @@ class FakeAiConversations extends AiConversations
             'persona_version' => $personaVersion,
             'usage_id'        => $usageId,
             'client_ref'      => $clientRef,
-            'created_at'      => $occurredAt?->format('Y-m-d\TH:i:s.uP') ?? $this->now(),
+            /*
+             * ⚠ UTC, BOTH SIDES. Turns are ordered by comparing these strings; a product clock in
+             * Toronto and a fake clock in UTC sorted a later turn first. The service compares real
+             * datetimes, so the fake must not be order-sensitive to the caller's timezone.
+             */
+            'created_at'      => $occurredAt !== null
+                ? DateTimeImmutable::createFromInterface($occurredAt)->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s.uP')
+                : $this->now(),
         ];
 
         $this->turns[$conversationId][] = $turn;
@@ -851,6 +858,6 @@ class FakeAiConversations extends AiConversations
      */
     private function now(): string
     {
-        return (new DateTimeImmutable)->format('Y-m-d\TH:i:s.uP');
+        return (new DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d\TH:i:s.uP');
     }
 }
