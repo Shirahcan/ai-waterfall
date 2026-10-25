@@ -36,7 +36,7 @@ class AiResearch
      *   Off by default, because it multiplies the response several times over
      *   and a caller that only needs to CHOOSE a source should not pay for
      *   bodies it will discard.
-     * @return array{results: array<int, array<string, mixed>>, provider: string, latency_ms: int, attempts: array<int, array<string, mixed>>}
+     * @return array{results: array<int, array<string, mixed>>, provider: string, latency_ms: int, attempts: array<int, array<string, mixed>>, cached?: bool}
      *
      * @throws AiUnavailableException|AllProvidersFailedException|AiOverBudgetException
      */

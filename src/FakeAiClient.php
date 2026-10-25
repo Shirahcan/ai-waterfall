@@ -436,11 +436,12 @@ class FakeAiClient extends AiClient
     }
 
     /** @param array<int, array<string, mixed>> $results */
-    public function queueSearch(array $results, string $provider = 'fake-search'): static
+    public function queueSearch(array $results, string $provider = 'fake-search', bool $cached = false): static
     {
+        // `cached` mirrors the service (1.24): true when it answered from its own memory, unbilled.
         $this->searchQueue[] = [
             'results' => $results, 'provider' => $provider,
-            'latency_ms' => 10, 'attempts' => [],
+            'latency_ms' => 10, 'attempts' => [], 'cached' => $cached,
         ];
 
         return $this;
