@@ -402,6 +402,17 @@ class ConversationsTest extends TestCase
         $this->assertCount(1, $fake->feedbackPage([], 2, 1)['feedback']);
     }
 
+    public function test_a_threads_running_state_round_trips_through_update(): void
+    {
+        $fake = (new FakeAiClient())->conversations();
+        $thread = $fake->start(ownerRef: 'u-1');
+
+        $updated = $fake->update($thread->id, ['state' => ['salient_facts' => ['spouse: Maria']]]);
+
+        $this->assertSame(['salient_facts' => ['spouse: Maria']], $updated->state);
+        $this->assertSame(['salient_facts' => ['spouse: Maria']], $fake->byIds([$thread->id])[$thread->id]->state);
+    }
+
     public function test_the_fake_returns_the_first_turn_for_a_repeated_client_ref(): void
     {
         $ai = new FakeAiClient;

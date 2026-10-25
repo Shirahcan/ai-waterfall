@@ -339,7 +339,7 @@ class AiConversations
      */
     public function update(string $conversationId, array $changes): Conversation
     {
-        $allowed = array_intersect_key($changes, array_flip(['title', 'audience', 'subject_ref']));
+        $allowed = array_intersect_key($changes, array_flip(['title', 'audience', 'subject_ref', 'state']));
 
         $payload = $this->client->patchJson("api/v1/conversations/{$conversationId}", $allowed);
 

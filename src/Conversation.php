@@ -38,6 +38,14 @@ final class Conversation
         public readonly ?DateTimeImmutable $retentionUntil,
         public readonly ?DateTimeImmutable $createdAt,
         public readonly array $raw = [],
+
+        /*
+         * P21h: the assistant's running digest of this thread (encrypted in the service). Last, so
+         * no existing caller's argument moves.
+         *
+         * @var array<string, mixed>|null
+         */
+        public readonly ?array $state = null,
     ) {}
 
     /** @param array<string, mixed> $a */
@@ -56,6 +64,7 @@ final class Conversation
             retentionUntil: self::time($a['retention_until'] ?? null),
             createdAt: self::time($a['created_at'] ?? null),
             raw: $a,
+            state: is_array($a['state'] ?? null) ? $a['state'] : null,
         );
     }
 

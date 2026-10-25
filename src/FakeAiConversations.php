@@ -430,7 +430,7 @@ class FakeAiConversations extends AiConversations
     {
         $this->mustHold($conversationId);
 
-        foreach (array_intersect_key($changes, array_flip(['title', 'audience', 'subject_ref'])) as $field => $value) {
+        foreach (array_intersect_key($changes, array_flip(['title', 'audience', 'subject_ref', 'state'])) as $field => $value) {
             $this->threads[$conversationId][$field] = $value;
         }
 
