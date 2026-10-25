@@ -245,6 +245,26 @@ class FakeAiClient extends AiClient
         return ['credentials' => [], 'benched' => 0];
     }
 
+    /** @var list<array<string, mixed>> attempts a test seeds for usageCalls() */
+    public array $usageCallRows = [];
+
+    public function usageCalls(array $filters = [], int $page = 1, int $perPage = 25): array
+    {
+        $rows = array_values(array_filter($this->usageCallRows, function (array $r) use ($filters) {
+            foreach (['task', 'provider', 'outcome'] as $f) {
+                if (($filters[$f] ?? '') !== '' && ($r[$f] ?? null) !== $filters[$f]) {
+                    return false;
+                }
+            }
+
+            return true;
+        }));
+
+        return ['calls' => array_slice($rows, ($page - 1) * $perPage, $perPage), 'meta' => [
+            'page' => $page, 'per_page' => $perPage, 'total' => count($rows), 'last_page' => max(1, (int) ceil(count($rows) / $perPage)),
+        ]];
+    }
+
     public function usage(array $query = []): array
     {
         return ['totals' => ['calls' => count($this->log->calls)]];

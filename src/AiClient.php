@@ -560,6 +560,19 @@ class AiClient
      * caller indexing the same string keys and drifting when a key is renamed.
      * This stays for anything that genuinely wants the untouched payload.
      */
+    /**
+     * This product's AI attempts, line by line, newest first (P21h). One row per provider attempt.
+     *
+     * @param  array{days?: int, task?: string, provider?: string, outcome?: string}  $filters
+     * @return array{calls: list<array<string, mixed>>, meta: array{page: int, per_page: int, total: int, last_page: int}}
+     */
+    public function usageCalls(array $filters = [], int $page = 1, int $perPage = 25): array
+    {
+        $payload = $this->get('api/v1/usage/calls', array_filter($filters, fn ($v) => $v !== null && $v !== '') + ['page' => $page, 'per_page' => $perPage]);
+
+        return ['calls' => array_values((array) ($payload['calls'] ?? [])), 'meta' => (array) ($payload['meta'] ?? [])];
+    }
+
     public function usage(array $query = []): array
     {
         return $this->get('api/v1/usage', $query);
