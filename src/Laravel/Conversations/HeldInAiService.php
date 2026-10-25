@@ -291,7 +291,13 @@ trait HeldInAiService
 
         foreach ($writable as $attribute => $field) {
             if (array_key_exists($attribute, $dirty)) {
-                $changes[$field] = $dirty[$attribute];
+                /*
+                 * ⚠ THE CAST VALUE, NOT THE RAW ONE. `getDirty()` holds what would be written to a
+                 * column, so a JSON-cast attribute arrives as a STRING; the service expects the
+                 * structure and refuses (or a fake silently ignores) a string. A plain string
+                 * attribute like `title` is the same either way.
+                 */
+                $changes[$field] = $this->getAttribute($attribute);
             }
         }
 
