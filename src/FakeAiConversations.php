@@ -289,6 +289,10 @@ class FakeAiConversations extends AiConversations
     /** @param array<string, mixed> $turn */
     private function turnMatches(array $turn, CorpusFilter $filter): bool
     {
+        if ($filter->turnIds !== [] && ! in_array($turn['id'], $filter->turnIds, true)) {
+            return false;
+        }
+
         if ($filter->role !== null && $filter->role !== '' && $turn['role'] !== $filter->role) {
             return false;
         }

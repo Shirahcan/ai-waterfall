@@ -70,6 +70,8 @@ class AiClientServiceProvider extends ServiceProvider
          * service is the authority; a copy that outlives the request is a second one.
          */
         $this->app->scoped(HeldConversations::class, fn () => new HeldConversations);
+        // P21d: the same rule for turns - one read per request, never kept longer.
+        $this->app->scoped(\Shirahcan\AiClient\Laravel\Conversations\HeldTurns::class, fn () => new \Shirahcan\AiClient\Laravel\Conversations\HeldTurns);
     }
 
     public function boot(): void

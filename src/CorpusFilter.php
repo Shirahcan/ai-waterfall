@@ -40,6 +40,14 @@ final class CorpusFilter
         public readonly ?string $provenanceClass = null,
         public readonly ?DateTimeInterface $since = null,
         public readonly ?DateTimeInterface $until = null,
+
+        /*
+         * P21d: the turns a product's own rows point at, so a page of its models hydrates in
+         * one read. Last, so no existing caller's argument moves.
+         *
+         * @var list<string>
+         */
+        public readonly array $turnIds = [],
     ) {}
 
     /** @return array<string, mixed> */
@@ -61,6 +69,10 @@ final class CorpusFilter
 
         if ($this->conversationIds !== []) {
             $query['conversation_ids'] = array_values($this->conversationIds);
+        }
+
+        if ($this->turnIds !== []) {
+            $query['turn_ids'] = array_values($this->turnIds);
         }
 
         // ⚠ `!== null`, so a deliberate false is sent as 0 rather than dropped.
