@@ -226,6 +226,54 @@ class FakeAiClient extends AiClient
         })(), $onEvent);
     }
 
+    /** @var array<string, array<string, mixed>|null> the `final` each ticket resumes to; null = expired */
+    private array $continuations = [];
+
+    /** @var list<array{ticket: string, outcome: array<string, mixed>, tool_token: ?string}> */
+    public array $continued = [];
+
+    /** @var list<array{channel: string, type: string, data: array<string, mixed>}> */
+    public array $published = [];
+
+    /** What `continueTurn($ticket)` answers. Unqueued tickets resume to null (expired). */
+    public function queueContinue(string $ticket, string $text, array $cards = []): static
+    {
+        $this->continuations[$ticket] = ['text' => $text, 'cards' => $cards, 'tool_calls' => [],
+            'usage' => ['steps' => 1], 'provider' => 'fake', 'model' => 'fake', 'route' => 'chat.turn', 'deferred' => []];
+
+        return $this;
+    }
+
+    public function continueTurn(string $ticket, array $outcome, ?string $toolToken = null): ?Chat\ChatTurnResult
+    {
+        $this->continued[] = ['ticket' => $ticket, 'outcome' => $outcome, 'tool_token' => $toolToken];
+        $final = $this->continuations[$ticket] ?? null;
+        unset($this->continuations[$ticket]);
+
+        return $final === null ? null : Chat\ChatTurnResult::fromFinal($final);
+    }
+
+    public function publishChatEvent(string $channel, string $type, array $data): int
+    {
+        $this->published[] = ['channel' => $channel, 'type' => $type, 'data' => $data];
+
+        return count($this->published);
+    }
+
+    /** Replays what was published to the channel after `$after`, then returns. */
+    public function chatEvents(string $channel, int $after, callable $onEvent, int $wait = 55): int
+    {
+        foreach ($this->published as $i => $event) {
+            $id = $i + 1;
+            if ($event['channel'] === $channel && $id > $after) {
+                $onEvent($id, $event['type'], $event['data']);
+                $after = $id;
+            }
+        }
+
+        return $after;
+    }
+
     public function cancelStream(string $streamId): bool
     {
         $this->cancelledStreams[] = $streamId;

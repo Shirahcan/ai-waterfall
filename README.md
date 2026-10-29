@@ -237,6 +237,28 @@ ToolRequestVerifier::verify($request->header('X-Ai-Timestamp'),
 
 Tests: `FakeAiClient::queueChatAnswer($text, $cards)` or `queueChatTurn($events)`.
 
+### A slow tool: defer, resume, push (1.28.0)
+
+A tool whose work takes too long for the turn answers
+`{ok: true, result: {status: "deferred", ticket, label, note}}` and hands the work to
+the product's own job. The turn ends honestly ("still working") with
+`$result->deferred = [['ticket' => ..., 'label' => ...]]`; put that on the message so
+the shared panel (`@shirahcan/ai-ui`) shows a "still working" row and listens.
+
+When the job finishes:
+
+```php
+$final = $ai->continueTurn($ticket, $toolOutcome, $freshToolToken); // null = expired: post your own answer
+// write the message (mark it as resolving $ticket), then push it to the open panel:
+$ai->publishChatEvent($conversationId, 'turn', ['message' => $message->toArray()]);
+```
+
+The panel's events line is the product's own route, proxying
+`$ai->chatEvents($channel, $after, fn (int $id, string $type, array $data) => ..., $wait)`
+behind the product's auth and ownership check.
+
+Tests: `FakeAiClient::queueContinue($ticket, $text, $cards)`; `$fake->continued`, `$fake->published`.
+
 ## Knowledge: `$ai->knowledge()`
 
 ```php

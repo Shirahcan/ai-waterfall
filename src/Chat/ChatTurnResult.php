@@ -26,6 +26,13 @@ final class ChatTurnResult
         public readonly ?string $route = null,
         public readonly bool $degraded = false,
         public readonly ?string $streamId = null,
+        /**
+         * Tools still working when the turn ended, as `[{ticket, label}]`. The product's
+         * job resumes each with {@see \Shirahcan\AiClient\AiClient::continueTurn()}.
+         *
+         * @var list<array{ticket: string, label: string}>
+         */
+        public readonly array $deferred = [],
     ) {}
 
     /** @param  array<string, mixed>  $final */
@@ -48,6 +55,10 @@ final class ChatTurnResult
             route: isset($final['route']) ? (string) $final['route'] : null,
             degraded: (bool) ($final['degraded'] ?? false),
             streamId: $streamId,
+            deferred: array_values(array_map(
+                static fn (array $d) => ['ticket' => (string) $d['ticket'], 'label' => (string) ($d['label'] ?? '')],
+                array_filter((array) ($final['deferred'] ?? []), static fn ($d) => is_array($d) && is_string($d['ticket'] ?? null)),
+            )),
         );
     }
 }

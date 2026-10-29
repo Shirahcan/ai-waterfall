@@ -361,6 +361,132 @@ class AiClient
     }
 
     /**
+     * Resume a turn one of this product's tools deferred (`POST /v1/chat/turns/continue`).
+     *
+     * A tool that answers `{status: "deferred", ticket, label}` ends the turn with
+     * `$result->deferred`; the product's job does the slow work and hands its
+     * result back here under that ticket. The engine runs the rest of the SAME
+     * loop and returns the answer, written from the data. Returns null when the
+     * turn is no longer waiting (expired, or already resumed), so the caller can
+     * fall back to writing its own answer.
+     *
+     * @param  array{ok: bool, result?: mixed, error?: string, card?: array<string, mixed>}  $outcome  what the tool would have returned
+     *
+     * @throws AiUnavailableException|AiOverBudgetException When the service is unreachable or refuses.
+     */
+    public function continueTurn(string $ticket, array $outcome, ?string $toolToken = null): ?Chat\ChatTurnResult
+    {
+        try {
+            $response = $this->http->post('api/v1/chat/turns/continue', [
+                'headers'     => $this->headers(),
+                'json'        => array_filter(['ticket' => $ticket, 'outcome' => $outcome, 'tool_token' => $toolToken], fn ($v) => $v !== null),
+                'http_errors' => false,
+                // The rest of the loop may still call one of this product's tools.
+                'timeout'     => max($this->timeout, self::CHAT_READ_TIMEOUT) + 60,
+            ]);
+        } catch (Throwable $e) {
+            throw new AiUnavailableException('ai-service is unreachable: '.$e->getMessage(), previous: $e);
+        }
+
+        $status = $response->getStatusCode();
+        $decoded = json_decode((string) $response->getBody(), true) ?: [];
+
+        if ($status === 404 && ($decoded['error'] ?? null) === 'unknown_ticket') {
+            return null;
+        }
+        if ($status < 200 || $status >= 300 || ! is_array($decoded['final'] ?? null)) {
+            throw $this->errorFor($status, $decoded);
+        }
+
+        return Chat\ChatTurnResult::fromFinal($decoded['final']);
+    }
+
+    /**
+     * Publish an event to one of this product's channels (one conversation,
+     * usually), for a panel that is open on it. `$data` is the product's own
+     * shape (its message, as its panel renders it); the service only relays it.
+     *
+     * @param  array<string, mixed>  $data
+     * @return int the event id
+     *
+     * @throws AiUnavailableException When the service is unreachable or refuses.
+     */
+    public function publishChatEvent(string $channel, string $type, array $data): int
+    {
+        $decoded = $this->postJson('api/v1/chat/channels/'.rawurlencode($channel).'/events', ['type' => $type, 'data' => $data]);
+
+        return (int) ($decoded['id'] ?? 0);
+    }
+
+    /**
+     * Stream one of this product's channels for up to `$wait` seconds, handing
+     * each event after `$after` to `$onEvent` as it lands. Returns the last id
+     * seen, which the next call passes as `$after`: a reconnect never replays.
+     *
+     * The product's own route proxies this to the browser, behind its auth and
+     * its ownership check; ai-service is loopback-only.
+     *
+     * @param  callable(int $id, string $type, array<string, mixed> $data): void  $onEvent
+     *
+     * @throws AiUnavailableException When the service is unreachable or refuses.
+     */
+    public function chatEvents(string $channel, int $after, callable $onEvent, int $wait = 55): int
+    {
+        try {
+            $response = $this->http->get('api/v1/chat/channels/'.rawurlencode($channel).'/events', [
+                'headers'      => $this->headers() + ['Accept' => 'text/event-stream'],
+                'query'        => ['after' => $after, 'wait' => $wait],
+                'http_errors'  => false,
+                'stream'       => true,
+                'timeout'      => 0,
+                // A comment arrives every 15s; a line silent for longer is dead.
+                'read_timeout' => 30,
+            ]);
+        } catch (Throwable $e) {
+            throw new AiUnavailableException('ai-service is unreachable: '.$e->getMessage(), previous: $e);
+        }
+
+        $status = $response->getStatusCode();
+        if ($status < 200 || $status >= 300) {
+            throw $this->errorFor($status, json_decode((string) $response->getBody(), true) ?: []);
+        }
+
+        $body = $response->getBody();
+        $buffer = '';
+        while (! $body->eof()) {
+            $chunk = $body->read(self::STREAM_READ_BYTES);
+            if ($chunk === '') {
+                continue;
+            }
+            $buffer = str_replace("\r\n", "\n", $buffer.$chunk);
+
+            while (($cut = strpos($buffer, "\n\n")) !== false) {
+                $frame = substr($buffer, 0, $cut);
+                $buffer = substr($buffer, $cut + 2);
+                $id = null;
+                foreach (explode("\n", $frame) as $line) {
+                    if (str_starts_with($line, 'id:')) {
+                        $id = (int) trim(substr($line, 3));
+                    }
+                }
+                $event = $this->parseFrame($frame);
+                if ($event === null) {
+                    continue;
+                }
+                if ($event->type === 'idle') {
+                    return max($after, (int) ($event->data['after'] ?? $after));
+                }
+                if ($id !== null) {
+                    $after = max($after, $id);
+                    $onEvent($id, $event->type, $event->data);
+                }
+            }
+        }
+
+        return $after;
+    }
+
+    /**
      * Fold a chat turn's events into its result. Shared with the fake, so a test
      * exercises the same reading of `final` / `error` / `cancelled` as production.
      *

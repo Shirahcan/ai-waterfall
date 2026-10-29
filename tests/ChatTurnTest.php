@@ -129,6 +129,56 @@ class ChatTurnTest extends TestCase
             'set_by' => 'deploy', 'enabled' => true], json_decode((string) $request->getBody(), true));
     }
 
+    public function test_a_deferred_turn_carries_its_tickets_and_continues_to_an_answer(): void
+    {
+        $client = $this->client(
+            new Response(200, [], $this->frame('final', ['text' => 'Working on it.', 'deferred' => [['ticket' => 't-1', 'label' => 'open cases'], ['bad' => 1]]])),
+            new Response(200, [], (string) json_encode(['final' => ['text' => 'You have 12.', 'cards' => [['type' => 'data_table', 'payload' => []]]]])),
+            new Response(404, [], (string) json_encode(['error' => 'unknown_ticket'])),
+        );
+
+        $turn = $client->chatTurn($this->input());
+        $this->assertSame([['ticket' => 't-1', 'label' => 'open cases']], $turn->deferred);
+
+        $answer = $client->continueTurn('t-1', ['ok' => true, 'result' => ['answer' => '12']], 'tok-2');
+        $this->assertSame('You have 12.', $answer?->text);
+        $this->assertSame(['ticket' => 't-1', 'outcome' => ['ok' => true, 'result' => ['answer' => '12']], 'tool_token' => 'tok-2'],
+            json_decode((string) $this->sent[1]['request']->getBody(), true));
+
+        $this->assertNull($client->continueTurn('t-1', ['ok' => true]), 'an expired ticket is null, not an exception');
+    }
+
+    public function test_channel_events_are_read_with_their_ids_until_idle(): void
+    {
+        $client = $this->client(new Response(200, [], ": ping\n\n"
+            ."id: 3\nevent: turn\ndata: {\"ticket\":\"t-1\",\"message\":{\"id\":9}}\n\n"
+            ."event: idle\ndata: {\"after\":3}\n\n"));
+
+        $seen = [];
+        $last = $client->chatEvents('conv-1', 2, function (int $id, string $type, array $data) use (&$seen) {
+            $seen[] = [$id, $type, $data['message']['id']];
+        });
+
+        $this->assertSame([[3, 'turn', 9]], $seen);
+        $this->assertSame(3, $last);
+        $this->assertStringContainsString('after=2', (string) $this->sent[0]['request']->getUri()->getQuery());
+    }
+
+    public function test_the_fake_continues_publishes_and_replays_channel_events(): void
+    {
+        $fake = (new FakeAiClient())->queueContinue('t-1', 'Done.');
+
+        $this->assertSame('Done.', $fake->continueTurn('t-1', ['ok' => true])?->text);
+        $this->assertNull($fake->continueTurn('t-1', ['ok' => true]));
+
+        $fake->publishChatEvent('conv-1', 'turn', ['ticket' => 't-1']);
+        $seen = [];
+        $fake->chatEvents('conv-1', 0, function (int $id, string $type) use (&$seen) {
+            $seen[] = $type;
+        });
+        $this->assertSame(['turn'], $seen);
+    }
+
     public function test_the_fake_records_the_turn_and_replays_a_queued_answer(): void
     {
         $fake = (new FakeAiClient())->queueChatAnswer('Hi there', [['type' => 'action_launch', 'payload' => ['module_id' => 'm']]]);
