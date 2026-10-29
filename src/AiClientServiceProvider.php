@@ -2,6 +2,8 @@
 
 namespace Shirahcan\AiClient;
 
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Shirahcan\AiClient\Laravel\Conversations\HeldConversations;
 
@@ -76,6 +78,22 @@ class AiClientServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        /*
+         * The tool host's throttle, keyed on the per-turn TOKEN: one runaway turn is capped
+         * without starving every other user's turn behind the same ai-service host. A product
+         * that defines its own `ai-tools` limiter keeps it.
+         */
+        if (RateLimiter::limiter(Laravel\Tools\ToolRoutes::LIMITER) === null) {
+            RateLimiter::for(Laravel\Tools\ToolRoutes::LIMITER, fn ($request) => [
+                Limit::perMinute(120)->by('ai-tools:'.sha1((string) $request->header('X-Ai-Tool-Token', 'manifest'))),
+                Limit::perMinute(1200)->by('ai-tools-host:'.$request->ip()),
+            ]);
+        }
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([Laravel\Tools\RegisterToolHostCommand::class]);
+        }
+
         $this->publishes([
             __DIR__.'/../config/ai-client.php' => config_path('ai-client.php'),
         ], 'ai-client-config');

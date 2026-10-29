@@ -51,6 +51,19 @@ return [
     'timeout' => (int) env('AI_SERVICE_TIMEOUT', 60),
 
     /*
+    | The chat tool host (`Laravel\Tools`, 1.29): the tools ai-service's chat engine calls
+    | back. A DEPLOYMENT CREDENTIAL, not a gate: the shared signing secret (the same value as
+    | this product's tool host row in ai-service's vault), the URL ai-service reaches this
+    | backend on, and the product name ai-service knows this app by. Unset secret = every
+    | tool call is refused. `php artisan ai:tools-register` writes the host row.
+    */
+    'tools' => [
+        'product'  => env('AI_TOOLS_PRODUCT', ''),
+        'secret'   => env('AI_TOOLS_SECRET', env('AI_CHAT_TOOLS_SECRET', '')),
+        'host_url' => env('AI_TOOLS_HOST_URL', env('AI_CHAT_TOOLS_HOST_URL', env('APP_URL', ''))),
+    ],
+
+    /*
     |--------------------------------------------------------------------------
     | Deliberately absent
     |--------------------------------------------------------------------------

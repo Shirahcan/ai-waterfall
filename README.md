@@ -259,6 +259,26 @@ behind the product's auth and ownership check.
 
 Tests: `FakeAiClient::queueContinue($ticket, $text, $cards)`; `$fake->continued`, `$fake->published`.
 
+### The tool host kit (1.29.0)
+
+A product writes ONE class, its catalog, and gets the whole host:
+
+```php
+// AppServiceProvider::register()
+$this->app->bind(ToolCatalog::class, MyToolCatalog::class);       // definitions(audience), run(name, input, ToolActor), actorExists(actor)
+$this->app->bind(ChatChannelGuard::class, MyChannelGuard::class);  // enabled(), channelFor(request, conversationId)
+
+// routes/api.php
+ToolRoutes::host();                                                // ai-tools/manifest + ai-tools/{name}, signed, throttled per token
+Route::middleware('auth:...')->group(fn () => ToolRoutes::chatEvents('assistant/conversations'));
+
+// per turn
+$token = ToolToken::issue(new ToolActor(userId: $id, audience: 'consultant', route: $route, conversationId: $thread));
+```
+
+Config `ai-client.tools.product|secret|host_url` (`AI_TOOLS_PRODUCT`, `AI_TOOLS_SECRET`,
+`AI_TOOLS_HOST_URL`); `php artisan ai:tools-register [--generate]` writes the host row.
+
 ## Knowledge: `$ai->knowledge()`
 
 ```php
