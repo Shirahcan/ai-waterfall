@@ -65,6 +65,13 @@ return [
         'path' => env('AI_TASKS_PATH'),
     ],
 
+    /*
+    | The assistant eval set `ai:eval` runs (1.31). Null = `tests/Eval/assistant_eval.json`.
+    */
+    'eval' => [
+        'file' => env('AI_EVAL_FILE'),
+    ],
+
     'tools' => [
         'product'  => env('AI_TOOLS_PRODUCT', ''),
         'secret'   => env('AI_TOOLS_SECRET', env('AI_CHAT_TOOLS_SECRET', '')),

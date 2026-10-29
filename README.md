@@ -292,6 +292,13 @@ $result = $ai->withCorrelation(['_key' => 'case:'.$id])->runTask('translate.mess
 
 A missing variable is refused before any spend. Tests: `FakeAiClient::queue(...)` serves `runTask()` too.
 
+### The eval runner (1.31.0)
+
+`php artisan ai:eval [--only=ids|audience] [--file=] [--out=]` runs a product's eval set through
+its real chat path and scores every reply (`must_mention`, `must_not_mention`, `kind`, `refuses`,
+plus the set's `forbid_for_audiences`). The product binds one `Laravel\Eval\EvalDriver`
+(`answer(item, set)`: who asks, from which page). Never runs in production.
+
 ## Knowledge: `$ai->knowledge()`
 
 ```php
