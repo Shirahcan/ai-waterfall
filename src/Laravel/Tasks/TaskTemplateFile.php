@@ -9,6 +9,7 @@ use InvalidArgumentException;
  *
  *   ---
  *   key: intake.question
+ *   task: intake.question       # optional: the task runs are routed and billed under, when prompts share one
  *   mode: json                  # text | json | structured
  *   route_key: intake.question  # optional
  *   sensitive: false
@@ -69,6 +70,7 @@ final class TaskTemplateFile
 
         return array_filter([
             'key'           => $key,
+            'task'          => isset($meta['task']) ? (string) $meta['task'] : null,
             'mode'          => $mode,
             'system'        => trim($sections['system']),
             'prompt'        => trim($sections['prompt']),

@@ -18,7 +18,8 @@ class TaskTemplateTest extends TestCase
 {
     private const FILE = <<<'MD'
     ---
-    key: intake.question
+    key: intake.question.employer
+    task: intake.question
     mode: json          # forced JSON
     sensitive: true
     required_keys: [question, why]
@@ -39,7 +40,8 @@ class TaskTemplateTest extends TestCase
     {
         $task = TaskTemplateFile::parse(self::FILE);
 
-        $this->assertSame('intake.question', $task['key']);
+        $this->assertSame('intake.question.employer', $task['key']);
+        $this->assertSame('intake.question', $task['task']);
         $this->assertSame('json', $task['mode']);
         $this->assertTrue($task['sensitive']);
         $this->assertSame(['question', 'why'], $task['required_keys']);
