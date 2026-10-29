@@ -64,4 +64,7 @@ class FakeCallLog
      * @var array<int, array{provider: string, model?: string}>|null
      */
     public ?array $preferredModels = null;
+
+    /** The named ladder the last call asked for, via withRoute(). */
+    public ?string $routeKey = null;
 }

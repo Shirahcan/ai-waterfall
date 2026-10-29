@@ -686,6 +686,14 @@ class FakeAiClient extends AiClient
         return parent::withCorrelation($correlation);
     }
 
+    public function withRoute(string $routeKey): static
+    {
+        // Recorded BEFORE the clone, or the test holding the original sees nothing.
+        $this->log->routeKey = $routeKey === '' ? null : $routeKey;
+
+        return parent::withRoute($routeKey);
+    }
+
     public function withPreferredModels(array $pairs): static
     {
         // Recorded BEFORE the clone, or the test holding the original sees nothing.

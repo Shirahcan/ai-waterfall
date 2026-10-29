@@ -75,6 +75,8 @@ class AiClient
     /** @var array<int, array{provider: string, model?: string}>|null */
     private ?array $preferredModels = null;
 
+    private ?string $routeKey = null;
+
     /**
      * Ask the service to try these (provider, model) pairs FIRST.
      *
@@ -105,6 +107,25 @@ class AiClient
     {
         $clone = clone $this;
         $clone->preferredModels = $pairs === [] ? null : array_values($pairs);
+
+        return $clone;
+    }
+
+    /**
+     * Use a NAMED preference ladder for this call (`assess.case.outcome:deep`).
+     *
+     * PREFER THIS TO withPreferredModels(). A route is decided on the service's
+     * vault console, so a product names WHICH ladder it wants and an admin
+     * decides which models stand on it - moving a tier from one model to another
+     * is then a screen change, not a deploy of every product that named the
+     * model in its own code. An explicit withPreferredModels() still wins.
+     *
+     * A CLONE, like every other with*(): the client is a singleton.
+     */
+    public function withRoute(string $routeKey): static
+    {
+        $clone = clone $this;
+        $clone->routeKey = $routeKey === '' ? null : $routeKey;
 
         return $clone;
     }
@@ -710,6 +731,7 @@ class AiClient
         $body['audience']             ??= $this->personaAudience;
         $body['per_provider_timeout'] = $this->perProviderTimeout;
         $body['preferred_models']     = $this->preferredModels;
+        $body['route_key']            = $this->routeKey;
 
         $body = array_filter($body, fn ($v) => $v !== null && $v !== []);
 

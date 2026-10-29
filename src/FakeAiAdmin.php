@@ -33,6 +33,9 @@ class FakeAiAdmin extends AiAdmin
     /** @var array<string, array<string, int>> product => audience ('' = default) => days */
     private array $retention = [];
 
+    /** @var array<string, list<array{provider: string, model: ?string}>> decided routes */
+    private array $routes = [];
+
     /** @var array<int, array<string, mixed>> */
     private array $trustKeys = [];
 
@@ -305,6 +308,66 @@ class FakeAiAdmin extends AiAdmin
             'threads_restamped'    => 0,
             'previous_days'        => $previous,
             'erased_by_next_prune' => 0,
+        ];
+    }
+
+    /**
+     * Shipped defaults a test can seed, so "undecided" is listed like the real service.
+     *
+     * @var array<string, list<array{provider: string, model: ?string}>>
+     */
+    public array $routeDefaults = [];
+
+    public function taskRoutes(): array
+    {
+        $keys = array_values(array_unique(array_merge(array_keys($this->routeDefaults), array_keys($this->routes))));
+        sort($keys);
+
+        $rows = array_map(fn (string $key) => $this->routeRow($key), $keys);
+
+        return [
+            'routes'  => $rows,
+            'summary' => [
+                'routes'            => count($rows),
+                'configured'        => count(array_filter($rows, fn (array $r) => $r['configured'])),
+                'unavailable_rungs' => 0,
+            ],
+        ];
+    }
+
+    public function setTaskRoute(string $routeKey, array $steps, ?string $setBy = null): array
+    {
+        $this->routes[$routeKey] = array_values(array_map(
+            fn (array $s) => ['provider' => (string) $s['provider'], 'model' => ($s['model'] ?? null) ?: null],
+            $steps,
+        ));
+        $this->writes[] = ['route.set', $routeKey, $this->routes[$routeKey], $setBy];
+
+        return $this->routeRow($routeKey);
+    }
+
+    public function resetTaskRoute(string $routeKey, ?string $setBy = null): array
+    {
+        $removed = count($this->routes[$routeKey] ?? []);
+        unset($this->routes[$routeKey]);
+        $this->writes[] = ['route.reset', $routeKey, $setBy];
+
+        return ['route' => $this->routeRow($routeKey), 'removed' => $removed];
+    }
+
+    /** @return array<string, mixed> */
+    private function routeRow(string $key): array
+    {
+        $configured = array_key_exists($key, $this->routes);
+        $mark = fn (array $steps) => array_map(fn (array $s) => $s + ['available' => true], $steps);
+
+        return [
+            'route_key'     => $key,
+            'configured'    => $configured,
+            'steps'         => $mark($configured ? $this->routes[$key] : ($this->routeDefaults[$key] ?? [])),
+            'default_steps' => $mark($this->routeDefaults[$key] ?? []),
+            'set_by'        => null,
+            'updated_at'    => null,
         ];
     }
 

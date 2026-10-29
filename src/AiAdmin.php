@@ -323,6 +323,64 @@ class AiAdmin
         ];
     }
 
+    /**
+     * Every task route: which models each task (or task variant) tries first.
+     *
+     * READ `configured`. An undecided route runs on the service's shipped
+     * default, which is not the same as somebody choosing it. And read each
+     * rung's `available`: a rung naming a model the vault holds no enabled
+     * credential for is skipped silently by the walk.
+     *
+     * @return array{routes: list<array<string, mixed>>, summary: array<string, mixed>}
+     */
+    public function taskRoutes(): array
+    {
+        $payload = $this->client->getJson('api/v1/admin/task-routes');
+
+        return [
+            'routes'  => array_values((array) ($payload['routes'] ?? [])),
+            'summary' => (array) ($payload['summary'] ?? []),
+        ];
+    }
+
+    /**
+     * Replace one route's ladder (1 to 8 rungs, first is tried first).
+     *
+     * @param  list<array{provider: string, model?: ?string}>  $steps
+     * @return array<string, mixed> the route as now listed
+     */
+    public function setTaskRoute(string $routeKey, array $steps, ?string $setBy = null): array
+    {
+        $body = ['route_key' => $routeKey, 'steps' => array_values($steps)];
+
+        if ($setBy !== null && $setBy !== '') {
+            $body['set_by'] = $setBy;
+        }
+
+        return (array) ($this->client->putJson('api/v1/admin/task-routes', $body)['route'] ?? []);
+    }
+
+    /**
+     * Put one route back on the service's shipped default.
+     *
+     * @return array{route: array<string, mixed>, removed: int}
+     */
+    public function resetTaskRoute(string $routeKey, ?string $setBy = null): array
+    {
+        $body = ['route_key' => $routeKey];
+
+        if ($setBy !== null && $setBy !== '') {
+            $body['set_by'] = $setBy;
+        }
+
+        $payload = $this->client->postJson('api/v1/admin/task-routes/reset', $body);
+
+        return [
+            'route'   => (array) ($payload['route'] ?? []),
+            'removed' => (int) ($payload['removed'] ?? 0),
+        ];
+    }
+
     public function trustKeys(): array
     {
         $payload = $this->client->getJson('api/v1/admin/trust-keys');
