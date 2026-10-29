@@ -78,6 +78,28 @@ class AiResearch
      *
      * @throws AiUnavailableException
      */
+    /**
+     * Research end to end in ai-service (`POST /v1/research/run`, 1.33): search (or one `url`),
+     * read the top pages, drop injection attempts, synthesise from THIS product's template
+     * (`template`, synced by `ai:tasks-sync`, its prompt reading `{{payload}}`), and keep only
+     * claims that cite a real source.
+     *
+     * Returns `{status: success|empty|ungrounded|failed, answer, key_points: [{text, sources}],
+     * sources: [{title, url, snippet, published_at}], search: {provider, cached, found, fetched,
+     * dropped}, error?}`. What to SAY for empty / ungrounded / failed is the product's: it is its
+     * voice.
+     *
+     * @param  array<string, mixed>  $request  `query` or `url`, `task`, `template`, and optionally `search_query`,
+     *   `include_domains`, `max_results`, `fetch_top`, `search_depth`, `deadline_seconds`, `correlation`
+     * @return array<string, mixed>
+     *
+     * @throws AiUnavailableException|AllProvidersFailedException
+     */
+    public function run(array $request): array
+    {
+        return $this->client->postJson('api/v1/research/run', array_filter($request, fn ($v) => $v !== null && $v !== []));
+    }
+
     public function fetch(string $url, ?int $timeout = null, ?int $maxBytes = null): ?array
     {
         try {

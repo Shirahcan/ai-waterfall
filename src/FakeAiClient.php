@@ -827,6 +827,35 @@ class FakeAiClient extends AiClient
      *
      * @return array<string, mixed>
      */
+    /** @var list<array<string, mixed>|\Throwable> what each next `research()->run()` answers */
+    private array $researchRuns = [];
+
+    /** @var list<array<string, mixed>> every research run requested */
+    public array $researchRequests = [];
+
+    /** @param  array<string, mixed>|\Throwable  $result  a `research/run` response, or what it throws */
+    public function queueResearchRun(array|\Throwable $result): static
+    {
+        $this->researchRuns[] = $result;
+
+        return $this;
+    }
+
+    /** @param  array<string, mixed>  $request */
+    public function nextResearchRun(array $request): array
+    {
+        $this->researchRequests[] = $request;
+        $next = array_shift($this->researchRuns);
+        if ($next === null) {
+            throw new AiUnavailableException('FakeAiClient: no research run queued.');
+        }
+        if ($next instanceof \Throwable) {
+            throw $next;
+        }
+
+        return $next;
+    }
+
     public function nextSearch(string $task, string $query): array
     {
         $this->log->searches[] = ['task' => $task, 'query' => $query];

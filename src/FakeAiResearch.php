@@ -32,4 +32,10 @@ class FakeAiResearch extends AiResearch
     {
         return $this->fake->pageFor($url);
     }
+
+    /** The next queued research run (`FakeAiClient::queueResearchRun`); the request is logged. */
+    public function run(array $request): array
+    {
+        return $this->fake->nextResearchRun($request);
+    }
 }
