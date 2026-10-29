@@ -5,7 +5,6 @@ namespace Shirahcan\AiClient\Laravel\Tools;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Validation\Rule;
 use Throwable;
 
 /**
@@ -18,8 +17,8 @@ use Throwable;
  */
 class ToolHostController extends Controller
 {
-    /** The audiences ai-service's chat turn accepts. */
-    public const AUDIENCES = ['admin', 'consultant', 'client', 'employer', 'partner', 'public'];
+    /** An audience is the PRODUCT's own role name (candidate, recruiter, guest...), checked for shape only. */
+    public const AUDIENCE_PATTERN = '/^[a-z][a-z_]{1,31}$/';
 
     /** What a slow tool (a data agent) may take; ai-service caps a tool's wait at 90s too. */
     public const CALL_SECONDS = 90;
@@ -28,7 +27,7 @@ class ToolHostController extends Controller
 
     public function manifest(Request $request): JsonResponse
     {
-        $data = $request->validate(['audience' => ['required', Rule::in(self::AUDIENCES)]]);
+        $data = $request->validate(['audience' => ['required', 'string', 'regex:'.self::AUDIENCE_PATTERN]]);
 
         return response()->json(['tools' => array_values($this->catalog->definitions($data['audience']))]);
     }
