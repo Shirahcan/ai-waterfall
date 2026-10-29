@@ -77,7 +77,11 @@ final class SetReminderTool implements StandardTool
 
         return [
             'ok'     => true,
-            'result' => ['proposed' => self::NAME, 'when' => $when, 'card_says' => 'Confirm to set it.'],
+            // ⚠ NOT SAVED YET. Measured 2026-10-29: told only "confirm to set it", the model said
+            // "I've set up the reminder" before anything was saved. The wording rule is spelled out.
+            'result' => ['proposed' => self::NAME, 'when' => $when, 'saved' => false,
+                'say' => 'Nothing is saved yet. In one first-person sentence, say what you WILL remind them about and when '
+                    .'(future tense: "I\'ll remind you..."), and ask them to confirm the card. Never say it is set.'],
             'card'   => ['type' => 'action_confirm', 'payload' => [
                 // First person, like every assistant line (the shared frame rule).
                 'content' => "I'll remind you to {$body} on {$when}. Confirm below and I'll set it.",
