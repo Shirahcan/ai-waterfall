@@ -124,4 +124,41 @@ class TaskRoutesTest extends TestCase
         $this->assertSame(1, $admin->resetTaskRoute('query.agent')['removed']);
         $this->assertSame('gemini-2.5-flash', $admin->taskRoutes()['routes'][0]['steps'][0]['model']);
     }
+
+    /*
+     * Provider prices (1.26.0): set on the vault console, never in config.
+     */
+
+    public function test_rates_are_read_and_a_price_is_posted_with_the_admin_key(): void
+    {
+        $client = $this->client([
+            $this->json(['rates' => [['kind' => 'tokens', 'match' => 'claude-haiku-5']], 'unpriced' => [], 'summary' => ['unpriced' => 0]]),
+            $this->json(['rate' => ['kind' => 'tokens', 'match' => 'claude-haiku-5', 'configured' => true]], ),
+            $this->json(['rate' => ['kind' => 'tokens'], 'deleted' => true]),
+        ]);
+
+        $this->assertSame('claude-haiku-5', $client->admin()->rates()['rates'][0]['match']);
+
+        $client->admin()->addRate(['kind' => 'tokens', 'match' => 'claude-haiku-5', 'effective_from' => '2026-11-01',
+            'in_micros' => 100, 'out_micros' => 500], 'Jane');
+        $this->assertSame('POST', $this->sent[1]->getMethod());
+        $this->assertSame('api/v1/admin/rates', $this->path(1));
+        $this->assertSame('Jane', $this->body(1)['set_by']);
+        $this->assertSame('Bearer admin-key', $this->sent[1]->getHeaderLine('Authorization'));
+
+        $this->assertTrue($client->admin()->deleteRate(7)['deleted']);
+        $this->assertSame('DELETE', $this->sent[2]->getMethod());
+        $this->assertSame('api/v1/admin/rates/7', $this->path(2));
+    }
+
+    public function test_the_fake_admin_adds_and_deletes_prices(): void
+    {
+        $admin = new FakeAiAdmin();
+        $row = $admin->addRate(['kind' => 'search', 'match' => 'Tavily', 'effective_from' => '2026-11-01', 'basic_micros' => 8000]);
+
+        $this->assertSame('tavily', $row['match']);
+        $this->assertSame(1, $admin->rates()['summary']['configured']);
+        $this->assertTrue($admin->deleteRate((int) $row['current']['id'])['deleted']);
+        $this->assertSame([], $admin->rates()['rates']);
+    }
 }

@@ -311,6 +311,52 @@ class FakeAiAdmin extends AiAdmin
         ];
     }
 
+    /** @var list<array<string, mixed>> prices a test can seed or the console added */
+    public array $rateRows = [];
+
+    /** @var list<array<string, mixed>> paid keys the fake reports as unpriced */
+    public array $unpricedKeys = [];
+
+    public function rates(): array
+    {
+        return [
+            'rates'    => $this->rateRows,
+            'unpriced' => $this->unpricedKeys,
+            'summary'  => [
+                'priced'     => count($this->rateRows),
+                'configured' => count(array_filter($this->rateRows, fn (array $r) => (bool) ($r['configured'] ?? false))),
+                'unpriced'   => count($this->unpricedKeys),
+            ],
+        ];
+    }
+
+    public function addRate(array $price, ?string $setBy = null): array
+    {
+        $entry = $price + ['source' => 'set', 'id' => count($this->writes) + 1, 'set_by' => $setBy];
+        $row = ['kind' => $price['kind'], 'match' => strtolower((string) $price['match']), 'configured' => true,
+            'current' => $entry, 'next' => null, 'entries' => [$entry]];
+        $this->rateRows[] = $row;
+        $this->writes[] = ['rate.add', $price, $setBy];
+
+        return $row;
+    }
+
+    public function deleteRate(int $id): array
+    {
+        $this->writes[] = ['rate.delete', $id];
+
+        foreach ($this->rateRows as $i => $row) {
+            if ((int) ($row['current']['id'] ?? 0) === $id) {
+                unset($this->rateRows[$i]);
+                $this->rateRows = array_values($this->rateRows);
+
+                return ['rate' => $row, 'deleted' => true];
+            }
+        }
+
+        return ['rate' => [], 'deleted' => false];
+    }
+
     /**
      * Shipped defaults a test can seed, so "undecided" is listed like the real service.
      *

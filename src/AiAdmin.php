@@ -381,6 +381,50 @@ class AiAdmin
         ];
     }
 
+    /**
+     * Every provider price: what applies today, what is coming, whether anybody
+     * set it here, and every PAID key nothing prices (its spend records as zero).
+     *
+     * @return array{rates: list<array<string, mixed>>, unpriced: list<array<string, mixed>>, summary: array<string, mixed>}
+     */
+    public function rates(): array
+    {
+        $payload = $this->client->getJson('api/v1/admin/rates');
+
+        return [
+            'rates'    => array_values((array) ($payload['rates'] ?? [])),
+            'unpriced' => array_values((array) ($payload['unpriced'] ?? [])),
+            'summary'  => (array) ($payload['summary'] ?? []),
+        ];
+    }
+
+    /**
+     * Add one dated price (never an edit: a change is a new row).
+     *
+     * @param  array<string, mixed>  $price  kind, match, effective_from and the kind's micros fields
+     * @return array<string, mixed> the priced thing as now listed
+     */
+    public function addRate(array $price, ?string $setBy = null): array
+    {
+        if ($setBy !== null && $setBy !== '') {
+            $price['set_by'] = $setBy;
+        }
+
+        return (array) ($this->client->postJson('api/v1/admin/rates', $price)['rate'] ?? []);
+    }
+
+    /**
+     * Remove a price set by mistake; the shipped default takes over again.
+     *
+     * @return array{rate: array<string, mixed>, deleted: bool}
+     */
+    public function deleteRate(int $id): array
+    {
+        $payload = $this->client->deleteJson("api/v1/admin/rates/{$id}");
+
+        return ['rate' => (array) ($payload['rate'] ?? []), 'deleted' => (bool) ($payload['deleted'] ?? false)];
+    }
+
     public function trustKeys(): array
     {
         $payload = $this->client->getJson('api/v1/admin/trust-keys');
