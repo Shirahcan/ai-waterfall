@@ -30,6 +30,9 @@ class AiClient
     /** Bytes per socket read while consuming an SSE stream. See readEvents(). */
     public const STREAM_READ_BYTES = 128;
 
+    /** Seconds a chat turn may go silent (a product tool running) before the read gives up. */
+    public const CHAT_READ_TIMEOUT = 120;
+
     public function __construct(
         private string $baseUrl,
         private string $trustKey,
@@ -340,7 +343,10 @@ class AiClient
                 // As generateStream: a stream ends on its terminal event, never on a wall clock.
                 'stream'       => true,
                 'timeout'      => 0,
-                'read_timeout' => $this->timeout,
+                // ⚠ LONGER THAN A GENERATION'S. Nothing flows while the engine waits on one of the
+                // product's own tools (a data agent can take a minute), and a read timeout sized
+                // for token gaps would kill a turn that is working.
+                'read_timeout' => max($this->timeout, self::CHAT_READ_TIMEOUT),
             ]);
         } catch (Throwable $e) {
             throw new AiUnavailableException('ai-service is unreachable: '.$e->getMessage(), previous: $e);
