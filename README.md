@@ -299,6 +299,14 @@ its real chat path and scores every reply (`must_mention`, `must_not_mention`, `
 plus the set's `forbid_for_audiences`). The product binds one `Laravel\Eval\EvalDriver`
 (`answer(item, set)`: who asks, from which page). Never runs in production.
 
+### Shared tools (1.32.0)
+
+Tools every product's assistant offers the SAME way (`Laravel\Tools\Standard`): one name, one
+schema, one confirm card. First: `set_reminder` (`body`, `remind_at` ISO 8601 with offset) ->
+the standard `action_confirm` card `@shirahcan/ai-ui` draws. A product writes only a
+`ReminderAdapter` (which audiences, which of its confirm actions saves it, which zone) and composes
+`new StandardToolbox(new SetReminderTool($adapter))` into its catalog.
+
 ## Knowledge: `$ai->knowledge()`
 
 ```php
