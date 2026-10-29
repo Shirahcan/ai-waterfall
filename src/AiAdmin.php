@@ -414,6 +414,34 @@ class AiAdmin
     }
 
     /**
+     * Where each product serves the tools its chat turns call back (1.27.1).
+     * The signing secret is write-only: listed as `has_secret`, never its value.
+     *
+     * @return list<array{product: string, base_url: string, enabled: bool, has_secret: bool}>
+     */
+    public function toolHosts(): array
+    {
+        return array_values((array) ($this->client->getJson('api/v1/admin/tool-hosts')['hosts'] ?? []));
+    }
+
+    /**
+     * Register (or move) a product's tool host. Omit the secret to keep the stored one.
+     *
+     * @return array<string, mixed> the host as now listed
+     */
+    public function setToolHost(string $product, string $baseUrl, ?string $secret = null, bool $enabled = true, ?string $setBy = null): array
+    {
+        $body = array_filter([
+            'product'        => $product,
+            'base_url'       => $baseUrl,
+            'signing_secret' => $secret,
+            'set_by'         => $setBy,
+        ], static fn ($v) => $v !== null && $v !== '') + ['enabled' => $enabled];
+
+        return (array) ($this->client->putJson('api/v1/admin/tool-hosts', $body)['host'] ?? []);
+    }
+
+    /**
      * Remove a price set by mistake; the shipped default takes over again.
      *
      * @return array{rate: array<string, mixed>, deleted: bool}

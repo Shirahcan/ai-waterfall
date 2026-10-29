@@ -113,6 +113,22 @@ class ChatTurnTest extends TestCase
         $this->assertFalse(ToolRequestVerifier::verify($headers['X-Ai-Timestamp'], $headers['X-Ai-Signature'], '{"input":{}}', '', now: 1030), 'no secret');
     }
 
+    public function test_a_tool_host_is_registered_with_a_write_only_secret(): void
+    {
+        $stack = HandlerStack::create(new MockHandler([new Response(200, [], json_encode(['host' => ['product' => 'portify', 'has_secret' => true]]))]));
+        $stack->push(Middleware::history($this->sent));
+        $client = new AiClient('http://127.0.0.1:8007', 'test-key', 60,
+            new Guzzle(['handler' => $stack, 'base_uri' => 'http://127.0.0.1:8007/']), adminKey: 'admin-key');
+
+        $host = $client->admin()->setToolHost('portify', 'https://api.portify.test', str_repeat('s', 40), setBy: 'deploy');
+
+        $this->assertTrue($host['has_secret']);
+        $request = $this->sent[0]['request'];
+        $this->assertSame('PUT', $request->getMethod());
+        $this->assertSame(['product' => 'portify', 'base_url' => 'https://api.portify.test', 'signing_secret' => str_repeat('s', 40),
+            'set_by' => 'deploy', 'enabled' => true], json_decode((string) $request->getBody(), true));
+    }
+
     public function test_the_fake_records_the_turn_and_replays_a_queued_answer(): void
     {
         $fake = (new FakeAiClient())->queueChatAnswer('Hi there', [['type' => 'action_launch', 'payload' => ['module_id' => 'm']]]);

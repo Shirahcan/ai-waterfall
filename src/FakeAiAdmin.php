@@ -357,6 +357,24 @@ class FakeAiAdmin extends AiAdmin
         return ['rate' => [], 'deleted' => false];
     }
 
+    /** @var array<string, array{product: string, base_url: string, enabled: bool, has_secret: bool}> */
+    private array $toolHosts = [];
+
+    public function toolHosts(): array
+    {
+        return array_values($this->toolHosts);
+    }
+
+    public function setToolHost(string $product, string $baseUrl, ?string $secret = null, bool $enabled = true, ?string $setBy = null): array
+    {
+        $had = $this->toolHosts[$product]['has_secret'] ?? false;
+        $this->toolHosts[$product] = ['product' => $product, 'base_url' => $baseUrl, 'enabled' => $enabled,
+            'has_secret' => $had || ($secret !== null && $secret !== '')];
+        $this->writes[] = ['tool_host.set', $product, $baseUrl, $setBy];
+
+        return $this->toolHosts[$product];
+    }
+
     /**
      * Shipped defaults a test can seed, so "undecided" is listed like the real service.
      *
