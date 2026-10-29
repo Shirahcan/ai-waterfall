@@ -27,6 +27,9 @@ use Throwable;
  */
 class AiClient
 {
+    /** Bytes per socket read while consuming an SSE stream. See readEvents(). */
+    public const STREAM_READ_BYTES = 128;
+
     public function __construct(
         private string $baseUrl,
         private string $trustKey,
@@ -399,7 +402,14 @@ class AiClient
         $sawTerminal = false;
 
         while (! $stream->eof()) {
-            $chunk = $stream->read(8192);
+            /*
+             * ⚠ SMALL READS, OR NOTHING STREAMS. On the streamed transport a read
+             * blocks until it has the requested bytes or the body ends, and a whole
+             * answer is well under 8KB, so `read(8192)` returned every token at once
+             * at the very end: measured 2026-10-29, 100 tokens all at 4.38s. One token
+             * frame is ~60-80 bytes, so 128 hands each one over as it arrives.
+             */
+            $chunk = $stream->read(self::STREAM_READ_BYTES);
 
             if ($chunk === '') {
                 continue;
