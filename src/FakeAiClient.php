@@ -174,6 +174,58 @@ class FakeAiClient extends AiClient
         }
     }
 
+    /** @var array<int, array<int, AiStreamEvent>> events for each next chatTurn(), in order */
+    private array $chatTurns = [];
+
+    /**
+     * Events the next `chatTurn()` yields. Queue a `final` to finish it, or an
+     * `error` (or nothing terminal) to exercise the failure paths.
+     *
+     * @param  array<int, AiStreamEvent>  $events
+     */
+    public function queueChatTurn(array $events): static
+    {
+        $this->chatTurns[] = $events;
+
+        return $this;
+    }
+
+    /** Convenience: a turn that streams `$text` and finishes with these cards. */
+    public function queueChatAnswer(string $text, array $cards = [], string $streamId = 'turn-1'): static
+    {
+        $events = [new AiStreamEvent(AiStreamEvent::OPEN, ['stream_id' => $streamId])];
+        foreach ($text === '' ? [] : str_split($text, 8) as $chunk) {
+            $events[] = new AiStreamEvent(AiStreamEvent::TOKEN, ['text' => $chunk]);
+        }
+        foreach ($cards as $card) {
+            $events[] = new AiStreamEvent(AiStreamEvent::CARD, $card);
+        }
+        $events[] = new AiStreamEvent(AiStreamEvent::FINAL, ['text' => $text, 'cards' => $cards, 'tool_calls' => [],
+            'usage' => ['steps' => 1], 'provider' => 'fake', 'model' => 'fake', 'route' => 'chat.turn']);
+
+        return $this->queueChatTurn($events);
+    }
+
+    public function chatTurn(Chat\ChatTurnInput $input, ?callable $onEvent = null, ?callable $onOpen = null): Chat\ChatTurnResult
+    {
+        $this->log->calls[] = ['task' => 'chat.turn', 'mode' => 'chat', 'payload' => $input->toWire()];
+
+        $events = array_shift($this->chatTurns);
+        if ($events === null) {
+            throw new AiUnavailableException('FakeAiClient: no chat turn queued.');
+        }
+
+        return $this->consumeTurn((function () use ($events, $onOpen) {
+            foreach ($events as $event) {
+                if ($event->type === AiStreamEvent::OPEN && $onOpen !== null && $event->streamId() !== null) {
+                    $onOpen($event->streamId());
+                }
+
+                yield $event;
+            }
+        })(), $onEvent);
+    }
+
     public function cancelStream(string $streamId): bool
     {
         $this->cancelledStreams[] = $streamId;

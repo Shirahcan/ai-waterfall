@@ -208,6 +208,35 @@ id**, because there is nothing to cancel.
 the words come from the persona registry at the service's own choke point, so changing how
 an assistant sounds is a row, not a deploy.
 
+## A chat turn: `$ai->chatTurn()` (1.27.0)
+
+ai-service runs the whole turn: one tool-using loop on Claude, streamed. The
+product sends who is asking and a short-lived token for its own tools; the
+service calls those tools back (`GET /api/ai-tools/manifest`,
+`POST /api/ai-tools/{name}`), signed.
+
+```php
+use Shirahcan\AiClient\Chat\ChatTurnInput;
+
+$result = $ai->chatTurn(new ChatTurnInput(
+    message: $text, audience: 'consultant', pageRoute: '/consultant/dashboard',
+    memoryRef: 'user:'.$user->id, toolToken: $token, persona: 'porter',
+), function (AiStreamEvent $e) {
+    // token -> append; discard -> un-paint this step; tool -> status line; card -> render
+});
+
+$result->text; $result->cards; // cards are proposals: nothing has been executed
+```
+
+Verify every tool call with the shared verifier, never a hand-rolled compare:
+
+```php
+ToolRequestVerifier::verify($request->header('X-Ai-Timestamp'),
+    $request->header('X-Ai-Signature'), $request->getContent(), $secret);
+```
+
+Tests: `FakeAiClient::queueChatAnswer($text, $cards)` or `queueChatTurn($events)`.
+
 ## Knowledge: `$ai->knowledge()`
 
 ```php

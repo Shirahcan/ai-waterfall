@@ -40,6 +40,15 @@ final class AiStreamEvent
     /** Terminal: every rung refused. */
     public const ERROR = 'error';
 
+    /** Chat turns only: a tool started or finished (`name`, `status`). */
+    public const TOOL = 'tool';
+
+    /** Chat turns only: a card for the product to render (`type`, `payload`). */
+    public const CARD = 'card';
+
+    /** Terminal, chat turns only: the turn is complete (`text`, `cards`, `usage`). */
+    public const FINAL = 'final';
+
     /**
      * @param  array<string, mixed>  $data
      */
@@ -129,6 +138,6 @@ final class AiStreamEvent
      */
     public function isTerminal(): bool
     {
-        return in_array($this->type, [self::DONE, self::CANCELLED, self::ERROR], true);
+        return in_array($this->type, [self::DONE, self::FINAL, self::CANCELLED, self::ERROR], true);
     }
 }

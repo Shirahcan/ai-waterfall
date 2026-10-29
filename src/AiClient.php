@@ -306,6 +306,84 @@ class AiClient
     }
 
     /**
+     * Run one chat turn in ai-service's chat engine (`POST /v1/chat/turns`).
+     *
+     * The service runs a tool-using loop and calls THIS product's tools back with
+     * the input's `toolToken`; this method streams its events to `$onEvent` as
+     * they arrive (token, tool, card, discard) and returns the finished turn.
+     *
+     * ⚠ `discard` MEANS UN-PAINT what was shown for the current step: a provider
+     * died mid-answer and the next one restarts it. A consumer that keeps
+     * appending shows two answers glued together.
+     *
+     * ⚠ STOP IT WITH {@see cancelStream()} and the id `$onOpen` received: the turn
+     * shares the stream registry, so the same cancel stops a turn at the provider.
+     *
+     * @param  ?callable(AiStreamEvent $event): void  $onEvent
+     * @param  ?callable(string $streamId): void  $onOpen
+     *
+     * @throws AiUnavailableException When the service is unreachable, refuses, errors
+     *   mid-turn, or the stream ends without `final`.
+     */
+    public function chatTurn(Chat\ChatTurnInput $input, ?callable $onEvent = null, ?callable $onOpen = null): Chat\ChatTurnResult
+    {
+        $body = $input->toWire() + array_filter(['correlation' => $this->correlation], fn ($v) => $v !== null && $v !== []);
+
+        try {
+            $response = $this->http->post('api/v1/chat/turns', [
+                'headers'      => $this->headers() + ['Accept' => 'text/event-stream'],
+                'json'         => $body,
+                'http_errors'  => false,
+                // As generateStream: a stream ends on its terminal event, never on a wall clock.
+                'stream'       => true,
+                'timeout'      => 0,
+                'read_timeout' => $this->timeout,
+            ]);
+        } catch (Throwable $e) {
+            throw new AiUnavailableException('ai-service is unreachable: '.$e->getMessage(), previous: $e);
+        }
+
+        $status = $response->getStatusCode();
+        if ($status < 200 || $status >= 300) {
+            throw $this->errorFor($status, json_decode((string) $response->getBody(), true) ?: []);
+        }
+
+        return $this->consumeTurn($this->readEvents($response->getBody(), $onOpen), $onEvent);
+    }
+
+    /**
+     * Fold a chat turn's events into its result. Shared with the fake, so a test
+     * exercises the same reading of `final` / `error` / `cancelled` as production.
+     *
+     * @param  iterable<AiStreamEvent>  $events
+     */
+    protected function consumeTurn(iterable $events, ?callable $onEvent): Chat\ChatTurnResult
+    {
+        $streamId = null;
+
+        foreach ($events as $event) {
+            if ($event->type === AiStreamEvent::OPEN) {
+                $streamId = $event->streamId();
+            }
+
+            if ($onEvent !== null) {
+                $onEvent($event);
+            }
+
+            if ($event->type === AiStreamEvent::FINAL) {
+                return Chat\ChatTurnResult::fromFinal($event->data, $streamId);
+            }
+
+            if ($event->type === AiStreamEvent::ERROR || $event->type === AiStreamEvent::CANCELLED) {
+                throw new AiUnavailableException('The chat turn did not finish: '
+                    .(string) ($event->data['message'] ?? $event->data['reason'] ?? $event->type));
+            }
+        }
+
+        throw new AiUnavailableException('The chat turn ended without completing.');
+    }
+
+    /**
      * Parse an SSE body into typed events.
      *
      * ⚠ FRAMES SPLIT ACROSS CHUNKS, AND A PARSER THAT ASSUMES OTHERWISE WORKS ON
