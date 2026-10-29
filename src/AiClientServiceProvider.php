@@ -91,7 +91,7 @@ class AiClientServiceProvider extends ServiceProvider
         }
 
         if ($this->app->runningInConsole()) {
-            $this->commands([Laravel\Tools\RegisterToolHostCommand::class]);
+            $this->commands([Laravel\Tools\RegisterToolHostCommand::class, Laravel\Tasks\SyncTasksCommand::class]);
         }
 
         $this->publishes([

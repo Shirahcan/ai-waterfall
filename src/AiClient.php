@@ -186,6 +186,37 @@ class AiClient
         ]);
     }
 
+    /**
+     * Run one of this product's tasks from its template held in ai-service
+     * (`POST /v1/tasks/{key}/run`, 1.30). The product sends VARIABLES, never a prompt: the
+     * system prompt, prompt, output contract, route and sensitivity are the template's,
+     * synced from the product's own files with `ai:tasks-sync`.
+     *
+     * The usual per-call options still apply (`withCorrelation`, `withBudget`, a persona),
+     * and `$media` turns the run into a vision call. A missing variable is refused (422)
+     * before any spend, as an {@see Exceptions\AiRequestRefusedException}.
+     *
+     * @param  array<string, string|int|float|bool|null>  $vars
+     * @param  list<array{mime: string, data: string, filename?: string}>  $media  base64 data
+     */
+    public function runTask(string $key, array $vars, array $media = []): AiResult
+    {
+        return $this->call(['vars' => $vars === [] ? new \stdClass() : $vars, 'media' => $media],
+            'api/v1/tasks/'.rawurlencode($key).'/run');
+    }
+
+    /**
+     * Sync this product's task templates (`PUT /v1/tasks`): a new version is written only for
+     * a template whose content changed. Returns `{written: [{key, version}], unchanged: [key]}`.
+     *
+     * @param  list<array<string, mixed>>  $tasks
+     * @return array<string, mixed>
+     */
+    public function syncTasks(array $tasks, ?string $updatedBy = null): array
+    {
+        return $this->putJson('api/v1/tasks', array_filter(['tasks' => $tasks, 'updated_by' => $updatedBy], fn ($v) => $v !== null));
+    }
+
     /** Plain prose, for when the OUTPUT is itself a markup language. */
     public function generateText(string $task, string $system, string $prompt): AiResult
     {
@@ -943,7 +974,7 @@ class AiClient
         }
     }
 
-    private function call(array $body): AiResult
+    private function call(array $body, string $path = 'api/v1/generate'): AiResult
     {
         $body['budget_seconds']       = $this->budgetSeconds;
         $body['correlation']          ??= $this->correlation;
@@ -969,7 +1000,7 @@ class AiClient
         }
 
         try {
-            $response = $this->http->post('api/v1/generate', $options + [
+            $response = $this->http->post($path, $options + [
                 'headers' => $this->headers(),
                 'json'    => $body,
                 'http_errors' => false,

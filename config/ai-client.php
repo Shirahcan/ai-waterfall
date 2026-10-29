@@ -57,6 +57,14 @@ return [
     | backend on, and the product name ai-service knows this app by. Unset secret = every
     | tool call is refused. `php artisan ai:tools-register` writes the host row.
     */
+    /*
+    | Where this product's AI task templates live (`ai:tasks-sync`, 1.30): one Markdown file
+    | per task. Null = `resources/ai-tasks` under the app.
+    */
+    'tasks' => [
+        'path' => env('AI_TASKS_PATH'),
+    ],
+
     'tools' => [
         'product'  => env('AI_TOOLS_PRODUCT', ''),
         'secret'   => env('AI_TOOLS_SECRET', env('AI_CHAT_TOOLS_SECRET', '')),

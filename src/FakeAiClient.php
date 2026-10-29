@@ -111,6 +111,26 @@ class FakeAiClient extends AiClient
         return $this->next($task, 'text', $prompt);
     }
 
+    /** @var array<string, array<string, mixed>> the templates last synced, by key */
+    public array $syncedTasks = [];
+
+    /** A task run takes the next queued result, like a generation; the log records its variables. */
+    public function runTask(string $key, array $vars, array $media = []): AiResult
+    {
+        return $this->next($key, 'task', ['vars' => $vars, 'media' => count($media)]);
+    }
+
+    public function syncTasks(array $tasks, ?string $updatedBy = null): array
+    {
+        $written = [];
+        foreach ($tasks as $task) {
+            $written[] = ['key' => (string) $task['key'], 'version' => 1];
+            $this->syncedTasks[(string) $task['key']] = $task;
+        }
+
+        return ['written' => $written, 'unchanged' => []];
+    }
+
     /**
      * Events the next `generateStream()` will yield.
      *

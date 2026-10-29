@@ -279,6 +279,19 @@ $token = ToolToken::issue(new ToolActor(userId: $id, audience: 'consultant', rou
 Config `ai-client.tools.product|secret|host_url` (`AI_TOOLS_PRODUCT`, `AI_TOOLS_SECRET`,
 `AI_TOOLS_HOST_URL`); `php artisan ai:tools-register [--generate]` writes the host row.
 
+### Tasks from templates (1.30.0)
+
+A product's single-shot task is a Markdown file (`resources/ai-tasks/**.md`: front matter
+`key`, `mode`, `required_keys`, `sensitive`, `route_key`, `persona`; then `## System`, `## Prompt`,
+optional `## Schema`). `php artisan ai:tasks-sync` publishes them (a new version only when one
+changed); then the product sends variables only:
+
+```php
+$result = $ai->withCorrelation(['_key' => 'case:'.$id])->runTask('translate.message', ['target' => 'fr', 'text' => $text]);
+```
+
+A missing variable is refused before any spend. Tests: `FakeAiClient::queue(...)` serves `runTask()` too.
+
 ## Knowledge: `$ai->knowledge()`
 
 ```php
