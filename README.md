@@ -326,6 +326,18 @@ the model calls it when it can answer none or only part of a question (`coverage
 ⚠ "A tool ran" is not "it was answered". Portify's gap miner went blind for days because a turn
 that called any tool was recorded as grounded, including "I couldn't find a breakdown by role".
 
+### Looking up one named record (1.36.0)
+
+`find_record` (`Laravel\Tools\Standard\FindRecordTool`): "tell me everything about Maria Garcia",
+"who is Acme Ltd". A product writes one `RecordFinder` (which audiences; `find($query, $actor)`
+returning `matches` by kind plus optional `profiles`, searched exactly as its own search box would
+for that actor) and adds `new FindRecordTool($finder)` to its toolbox. The kit adds a ready-made
+markdown `link` to every row carrying a `url` (or a person's `page`), and never lets a miss or a
+failure be read as "this person does not exist".
+
+⚠ Without it a product's data tools answer questions about SETS of records only: Portify told an
+admin a listed user did not exist after searching field names for her name.
+
 ### The plumbing kit (1.34.0)
 
 The four things every product's assistant used to write for itself:
