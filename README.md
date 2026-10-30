@@ -28,29 +28,35 @@ and the point survives without it: a client that carries keys is a client nobody
 
 If the service is unreachable, that is an outage to **report**, not to route around.
 
-## Install
+## Install: a new product, end to end
+
+Every step below has failed silently on a real product at least once, so the last one checks
+the others.
+
+1. `composer require shirahcan/ai-client`
+2. On the ai-service box: `php artisan ai:issue-key <product> --label="<product> prod"`, then set
+   `AI_SERVICE_URL`, `AI_SERVICE_TRUST_KEY`, `AI_SERVICE_TIMEOUT` (see **Config**).
+3. Templates in `resources/ai-tasks/**.md`; mark any that read client documents `sensitive: true`
+   (only cleared, no-training credentials serve it).
+4. Add **`php artisan ai:tasks-sync`** to the deploy script after `config:cache`, then
+   **`php artisan ai:doctor`**. A deploy that edits its own script runs the old copy, so run both
+   by hand once.
+5. An assistant: `AI_TOOLS_PRODUCT`, `AI_TOOLS_SECRET`, `AI_TOOLS_HOST_URL`, then
+   `php artisan ai:tools-register`; compose the shared tools (`set_reminder`,
+   `report_answer_gap`) into its catalog. The UI is `@shirahcan/ai-ui`.
+6. Knowledge: a Markdown folder and `php artisan ai:knowledge-sync`.
+
+**`php artisan ai:doctor`** checks the key, that the service answers, that every template on
+disk is live, and the tool host's credential, and exits non-zero on any failure.
 
 ```bash
 composer require shirahcan/ai-client
 ```
 
-```dotenv
-AI_SERVICE_URL=http://127.0.0.1:8007
-AI_SERVICE_TRUST_KEY=<issued by the service>
-AI_SERVICE_TIMEOUT=60
-```
-
-The key is minted **by the service**, because the callee owns the key:
-
-```bash
-# on the ai-service box
-php artisan ai:issue-key portify --label="portify prod"
-```
-
-An unset key throws at resolution, not at the first call. ⚠ That guard is load-bearing and
-it is not enough on its own: **finance-suite ran for weeks on production with no key**, and
-because its callers catch broadly, every AI feature it has degraded silently rather than
-anybody being told. Check `isReachable()` in your health endpoint.
+The key is minted **by the service**, because the callee owns the key. An unset key throws at
+resolution, not at the first call. ⚠ That guard is load-bearing and it is not enough on its own:
+**finance-suite ran for weeks on production with no key**, and because its callers catch broadly,
+every AI feature it has degraded silently. That is what `ai:doctor` is for.
 
 ## Config is three values, deliberately
 
@@ -64,22 +70,25 @@ AI config.
 
 ## Use
 
+**A prompt lives in a template, never in code.** Write `resources/ai-tasks/<area>/<key>.md`
+(front matter `key`, `mode` = text / json / structured, optional `sensitive`, `persona`,
+`route_key`, then `## System`, `## Prompt`, and for json/structured `## Schema`), run
+`php artisan ai:tasks-sync` on every deploy, and call it by its key with variables only:
+
 ```php
 $ai = app(AiClient::class);
 
-$r = $ai->generateJson('porter.classify', $system, $prompt);
-$r->array();          // decoded payload
+$r = $ai->runTask('intake.question', ['program' => 'PGWP', 'asked' => 'none']);
+$r->array();          // json / structured: the decoded payload
+$r->text();           // text mode
 $r->provider;         // who actually answered
-$r->fellThrough();    // did the waterfall fall past anything?
-
-$ai->generateText('sites.write_pml', $system, $prompt)->text();
-
-// A provider-NEUTRAL conversation each adapter projects. This is how Porter keeps its
-// conversational turn without the service ever learning what a Porter turn is.
-$ai->generateStructured('porter.turn', $system, $messages, $schema, requiredKeys: ['action']);
 
 $ai->embed('knowledge.embed.query', $text)->vector;
 ```
+
+`generateJson()`, `generateText()` and `generateStructured()` still exist and are
+**deprecated for product features** (1.35.0): a prompt in code cannot be edited from the
+console, versioned, or evaluated, and every product that started that way had to migrate.
 
 ### Research
 
@@ -306,6 +315,16 @@ schema, one confirm card. First: `set_reminder` (`body`, `remind_at` ISO 8601 wi
 the standard `action_confirm` card `@shirahcan/ai-ui` draws. A product writes only a
 `ReminderAdapter` (which audiences, which of its confirm actions saves it, which zone) and composes
 `new StandardToolbox(new SetReminderTool($adapter))` into its catalog.
+
+### Reporting what the assistant could not answer (1.35.0)
+
+`report_answer_gap` (`Laravel\Tools\Standard\ReportAnswerGapTool`, no adapter, every audience):
+the model calls it when it can answer none or only part of a question (`coverage` none / partial,
+`missing` in a few words). It leaves an `answer_gap` card on the turn that the product reads with
+`AnswerGap::find($result->cards)` and removes with `AnswerGap::strip()` before rendering.
+
+⚠ "A tool ran" is not "it was answered". Portify's gap miner went blind for days because a turn
+that called any tool was recorded as grounded, including "I couldn't find a breakdown by role".
 
 ### The plumbing kit (1.34.0)
 

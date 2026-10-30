@@ -177,7 +177,12 @@ class AiClient
     /** @var array<string, string>|null */
     private ?array $correlation = null;
 
-    /** Forced-JSON generation from a system + user prompt. */
+    /**
+     * Forced-JSON generation from a system + user prompt.
+     *
+     * @deprecated 1.35.0 for a product feature: put the prompt in a template (`resources/ai-tasks`, `ai:tasks-sync`)
+     *             and call {@see runTask()}. A prompt in code is invisible to the console and to evals.
+     */
     public function generateJson(string $task, string $system, string $prompt, ?int $maxRepairs = null): AiResult
     {
         return $this->call([
@@ -217,7 +222,25 @@ class AiClient
         return $this->putJson('api/v1/tasks', array_filter(['tasks' => $tasks, 'updated_by' => $updatedBy], fn ($v) => $v !== null));
     }
 
-    /** Plain prose, for when the OUTPUT is itself a markup language. */
+    /**
+     * The templates this product has live in ai-service, and the shared ones it may load:
+     * `{tasks: [{key, version, mode, route_key, sensitive, checksum, updated_at}], shared: [...]}`.
+     *
+     * @return array{tasks: list<array<string, mixed>>, shared: list<array<string, mixed>>}
+     */
+    public function liveTasks(): array
+    {
+        $body = $this->getJson('api/v1/tasks');
+
+        return ['tasks' => array_values((array) ($body['tasks'] ?? [])), 'shared' => array_values((array) ($body['shared'] ?? []))];
+    }
+
+    /**
+     * Plain prose, for when the OUTPUT is itself a markup language.
+     *
+     * @deprecated 1.35.0 for a product feature: put the prompt in a template (`resources/ai-tasks`, `ai:tasks-sync`)
+     *             and call {@see runTask()}. A prompt in code is invisible to the console and to evals.
+     */
     public function generateText(string $task, string $system, string $prompt): AiResult
     {
         return $this->call(['task' => $task, 'mode' => 'text', 'system' => $system, 'prompt' => $prompt]);
@@ -675,6 +698,8 @@ class AiClient
      *   that exact name here or the instruction points at nothing.
      * @param  list<string>  $requiredKeys  Drives the schema-repair retry. The
      *   service enforces presence; the SEMANTIC check stays with you.
+     *
+     * @deprecated 1.35.0 for a product feature: a `mode: structured` template and {@see runTask()}.
      */
     public function generateStructured(
         string $task,

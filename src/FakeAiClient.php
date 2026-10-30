@@ -131,6 +131,12 @@ class FakeAiClient extends AiClient
         return ['written' => $written, 'unchanged' => []];
     }
 
+    /** The live templates are the ones synced to this fake (and nothing shared). */
+    public function liveTasks(): array
+    {
+        return ['tasks' => array_map(static fn (string $k) => ['key' => $k, 'version' => 1], array_keys($this->syncedTasks)), 'shared' => []];
+    }
+
     /**
      * Events the next `generateStream()` will yield.
      *
