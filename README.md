@@ -307,6 +307,24 @@ the standard `action_confirm` card `@shirahcan/ai-ui` draws. A product writes on
 `ReminderAdapter` (which audiences, which of its confirm actions saves it, which zone) and composes
 `new StandardToolbox(new SetReminderTool($adapter))` into its catalog.
 
+### The plumbing kit (1.34.0)
+
+The four things every product's assistant used to write for itself:
+
+- **Threads.** `Laravel\Conversations\OwnedThreads` for a product that keeps NO local copy
+  (record / list / read / erase / rate, with ownership checked on every call and the owner a hash:
+  `OwnedThreads::ownerRef('operator', $email)`). `Laravel\Conversations\RowMirror` for a product that
+  keeps its own rows and mirrors them (thread / turn, idempotent on `client_ref`, ids written back
+  quietly and without timestamps).
+- **Knowledge.** `Laravel\Knowledge\KnowledgeCorpus` reads a folder of Markdown with YAML front
+  matter (a regulated entry must expire; two files cannot share a slug); `php artisan
+  ai:knowledge-sync [--path=] [--dry-run]` publishes it and retires deleted files, and never retires
+  from an empty read. Extra front-matter keys come back under `meta` for a product's own rules.
+- **Memory.** `Laravel\Memory\HeldMemory`: one read per request, an unreachable service reads empty
+  with `lastReadFailed()`, writes throw.
+- **Feedback.** `Laravel\Conversations\TurnFeedback`: the service's reasons and the voter refs
+  (a guest's token is hashed, never stored).
+
 ## Knowledge: `$ai->knowledge()`
 
 ```php
