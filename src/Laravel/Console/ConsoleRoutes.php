@@ -24,14 +24,19 @@ use Illuminate\Support\Facades\Route;
 final class ConsoleRoutes
 {
     /**
-     * [method, browser path pattern, upstream path, admin key?, actor field or null].
+     * [method, browser path pattern, upstream path, admin key (true | false | PREFER_ADMIN), actor field or null].
      * `{x}` segments are copied to the upstream path by name.
      *
-     * @var list<array{0: string, 1: string, 2: string, 3: bool, 4: ?string}>
+     * @var list<array{0: string, 1: string, 2: string, 3: bool|string, 4: ?string}>
      */
     public const TABLE = [
         // This product: what it may do, its switch and cap.
-        ['GET',    'capabilities',                        'api/v1/console/capabilities',  false, null],
+        /*
+         * ⚠ ASKED WITH THE ADMIN KEY WHEN THE PRODUCT HOLDS ONE. The service decides `is_admin`
+         * from the key it is shown; asked with the product key, a product that does hold the
+         * estate admin key would be told it does not, and its estate controls would never appear.
+         */
+        ['GET',    'capabilities',                        'api/v1/console/capabilities',  self::PREFER_ADMIN, null],
         ['GET',    'state',                               'api/v1/console/state',         false, null],
         ['POST',   'pause',                               'api/v1/console/pause',         false, 'by'],
         ['POST',   'resume',                              'api/v1/console/resume',        false, 'by'],
@@ -87,6 +92,9 @@ final class ConsoleRoutes
         ['POST',   'vault/trust-keys',                    'api/v1/admin/trust-keys',      true, 'by'],
         ['DELETE', 'vault/trust-keys/{id}',               'api/v1/admin/trust-keys/{id}', true, null],
     ];
+
+    /** The row uses the admin key when the product holds one, else the product key. */
+    public const PREFER_ADMIN = 'prefer';
 
     /** Path segments a route parameter may hold: never a slash-walk or a query. */
     public const SEGMENT = '[A-Za-z0-9_.:-]{1,96}';

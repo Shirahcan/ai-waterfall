@@ -20,7 +20,8 @@ final class ConsoleProxyController
     public function __invoke(Request $request, AiClient $client): JsonResponse
     {
         $row = (int) $request->route()->defaults['_ai_console_row'];
-        [$method, , , $asAdmin, $actorField] = ConsoleRoutes::TABLE[$row];
+        [$method, , , $admin, $actorField] = ConsoleRoutes::TABLE[$row];
+        $asAdmin = $admin === ConsoleRoutes::PREFER_ADMIN ? $client->canAdminister() : (bool) $admin;
 
         $params = array_filter($request->route()->parameters(), 'is_string');
         $path = ConsoleRoutes::upstream($row, $params);

@@ -95,6 +95,20 @@ class ConsoleProxyTest extends TestCase
         $this->assertSame('/api/v1/admin/budgets', $this->sent[0]['request']->getUri()->getPath());
     }
 
+    public function test_capabilities_are_asked_with_the_admin_key_when_the_product_holds_one(): void
+    {
+        $this->client('admin-key');
+        $this->mock->append(new Response(200, [], json_encode(['is_admin' => true])));
+        $this->getJson('/admin/ai-console/capabilities')->assertOk();
+        $this->assertSame('Bearer admin-key', $this->sent[0]['request']->getHeaderLine('Authorization'));
+
+        $this->sent = [];
+        $this->client();
+        $this->mock->append(new Response(200, [], json_encode(['is_admin' => false])));
+        $this->getJson('/admin/ai-console/capabilities')->assertOk();
+        $this->assertSame('Bearer trust', $this->sent[0]['request']->getHeaderLine('Authorization'));
+    }
+
     public function test_the_services_own_422_reaches_the_console_and_a_500_does_not(): void
     {
         $this->client();
