@@ -553,6 +553,26 @@ indistinguishable from "a generous cap" from a product's side. Likewise `stopped
 product's own switch while `refusing` is what the generation path gets, which is also
 true under a global stop; collapse them and resuming one product appears to do nothing.
 
+## Site management: the AI console in one line (1.37.0)
+
+Every product's admin gets the same AI console (usage and trends, prompt templates, voice,
+knowledge, feedback, its own AI switch and cap; estate-wide controls when it holds the admin key).
+The screens are `@shirahcan/ai-ui/console`; the backend is one line inside the product's ADMIN
+auth group:
+
+```php
+use Shirahcan\AiClient\Laravel\Console\ConsoleRoutes;
+
+Route::middleware(['auth:api', 'can:manage-ai'])->group(fn () => ConsoleRoutes::mount('admin/ai-console'));
+```
+
+- A whitelist (`ConsoleRoutes::TABLE`), never a pass-through: transcripts and memory are not reachable.
+- The actor on every write (`by`, `updated_by`, `set_by`, `author`) is the signed-in user, overwritten
+  server-side. Set `ai-client.console.actor` to an invokable class to name people differently.
+- Estate rows (`estate`, `vault/*`, `shared-tasks/*`) need `AI_SERVICE_ADMIN_KEY`; without it they
+  answer 403 `admin_not_configured` and the UI shows them read-only.
+- The service's own 4xx (a template lint message) passes through; a 5xx is `report()`ed and returned plain.
+
 ## Failures are typed, because the remedies differ
 
 | Exception | Means | What to do |

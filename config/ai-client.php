@@ -79,6 +79,14 @@ return [
     ],
 
     /*
+    | Site management's AI console (ConsoleRoutes::mount). `actor` is an optional invokable
+    | class naming who made a change; unset = the signed-in user's email.
+    */
+    'console' => [
+        'actor' => env('AI_CONSOLE_ACTOR'),
+    ],
+
+    /*
     |--------------------------------------------------------------------------
     | Deliberately absent
     |--------------------------------------------------------------------------

@@ -1371,6 +1371,48 @@ class AiClient
         return trim($this->adminKey) !== '';
     }
 
+    /**
+     * One request to the service with its status and body handed back AS THEY ARE, for the
+     * Site management console proxy ({@see \Shirahcan\AiClient\Laravel\Console\ConsoleProxyController}).
+     *
+     * ⚠ IT DOES NOT MAP ERRORS, on purpose. A console shows the service's own 422 ("the
+     * product does not send {{tone}}") beside the field it is about; turning that into a typed
+     * exception and back would lose the field. Only "unreachable" throws, as everywhere else.
+     *
+     * @param  array<string, mixed>  $query
+     * @param  array<string, mixed>  $body
+     * @return array{status: int, body: array<string, mixed>}
+     *
+     * @throws AiUnavailableException|AdminNotConfiguredException
+     */
+    public function forward(string $method, string $path, array $query = [], array $body = [], bool $asAdmin = false): array
+    {
+        $client = $this;
+        if ($asAdmin) {
+            if (trim($this->adminKey) === '') {
+                throw AdminNotConfiguredException::make();
+            }
+            $client = clone $this;
+            $client->trustKey = $this->adminKey;
+        }
+
+        $options = ['headers' => $client->headers(), 'http_errors' => false, 'query' => $query];
+        if (in_array(strtoupper($method), ['POST', 'PUT', 'PATCH'], true)) {
+            // Sent as an object even when empty: the service validates a JSON body.
+            $options['json'] = $body === [] ? new \stdClass : $body;
+        }
+
+        try {
+            $response = $client->http->request(strtoupper($method), $path, $options);
+        } catch (Throwable $e) {
+            throw new AiUnavailableException('ai-service is unreachable: '.$e->getMessage(), previous: $e);
+        }
+
+        $decoded = json_decode((string) $response->getBody(), true);
+
+        return ['status' => $response->getStatusCode(), 'body' => is_array($decoded) ? $decoded : []];
+    }
+
     /** The caller's budget for the next call, for surfaces that forward it. */
     public function budgetSecondsOrNull(): ?float
     {
