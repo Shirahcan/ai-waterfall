@@ -573,6 +573,14 @@ Route::middleware(['auth:api', 'can:manage-ai'])->group(fn () => ConsoleRoutes::
   answer 403 `admin_not_configured` and the UI shows them read-only.
 - The service's own 4xx (a template lint message) passes through; a 5xx is `report()`ed and returned plain.
 
+1.38.0 adds, with no change in the product:
+- `?as_product=<key>` on any row: the admin key reads or edits ANOTHER product's prompts, voice,
+  knowledge and feedback (the product picker). Without the admin key it is a 403 here, and the
+  service refuses a product key that names another product.
+- `products` (admin): the products the picker offers, own product first.
+- `assist`: "Ask the assistant" rewrites a prompt or a voice and returns a suggestion; nothing is saved.
+- `tasks/{key}/revert`: a template goes back to its file's words, and syncs follow the file again.
+
 ## Failures are typed, because the remedies differ
 
 | Exception | Means | What to do |

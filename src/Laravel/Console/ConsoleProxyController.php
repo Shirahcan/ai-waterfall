@@ -22,6 +22,16 @@ final class ConsoleProxyController
         $row = (int) $request->route()->defaults['_ai_console_row'];
         [$method, , , $admin, $actorField] = ConsoleRoutes::TABLE[$row];
         $asAdmin = $admin === ConsoleRoutes::PREFER_ADMIN ? $client->canAdminister() : (bool) $admin;
+        /*
+         * 1.38: `?as_product=mploynow` reads or edits ANOTHER product's prompts, voice, knowledge
+         * or feedback. Only the estate admin key may (the service refuses a product key that
+         * names another product), so the row goes with the admin key, or is refused here as an
+         * estate row would be when the product holds none.
+         */
+        $actsFor = $request->query(ConsoleRoutes::AS_PRODUCT);
+        if (is_string($actsFor) && $actsFor !== '') {
+            $asAdmin = true;
+        }
 
         $params = array_filter($request->route()->parameters(), 'is_string');
         $path = ConsoleRoutes::upstream($row, $params);

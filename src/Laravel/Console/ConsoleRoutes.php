@@ -40,6 +40,8 @@ final class ConsoleRoutes
         ['GET',    'state',                               'api/v1/console/state',         false, null],
         ['POST',   'pause',                               'api/v1/console/pause',         false, 'by'],
         ['POST',   'resume',                              'api/v1/console/resume',        false, 'by'],
+        // "Ask the assistant" beside a prompt or a voice: a suggestion, never a save (1.38).
+        ['POST',   'assist',                              'api/v1/console/assist',        false, null],
         ['GET',    'credentials/status',                  'api/v1/credentials/status',    false, null],
 
         // Usage and trends (filterable by product; the estate total is visible to every product).
@@ -51,6 +53,8 @@ final class ConsoleRoutes
         ['GET',    'tasks/{key}',                         'api/v1/tasks/{key}',           false, null],
         ['PATCH',  'tasks/{key}',                         'api/v1/tasks/{key}',           false, 'updated_by'],
         ['POST',   'tasks/{key}/versions/{version}/restore', 'api/v1/tasks/{key}/versions/{version}/restore', false, 'updated_by'],
+        // Back to the template file's words (undo every console edit) (1.38).
+        ['POST',   'tasks/{key}/revert',                  'api/v1/tasks/{key}/revert',    false, 'updated_by'],
 
         // Voice.
         ['GET',    'personas',                            'api/v1/personas',              false, null],
@@ -67,6 +71,8 @@ final class ConsoleRoutes
 
         // Estate-wide (admin key only).
         ['GET',    'estate',                              'api/v1/admin/estate',          true, null],
+        // The products the picker offers (1.38).
+        ['GET',    'products',                            'api/v1/admin/products',        true, null],
         ['PATCH',  'shared-tasks/{key}',                  'api/v1/admin/shared-tasks/{key}', true, 'updated_by'],
         ['POST',   'shared-tasks/{key}/versions/{version}/restore', 'api/v1/admin/shared-tasks/{key}/versions/{version}/restore', true, 'updated_by'],
         ['GET',    'vault/credentials',                   'api/v1/admin/credentials',     true, null],
@@ -92,6 +98,9 @@ final class ConsoleRoutes
         ['POST',   'vault/trust-keys',                    'api/v1/admin/trust-keys',      true, 'by'],
         ['DELETE', 'vault/trust-keys/{id}',               'api/v1/admin/trust-keys/{id}', true, null],
     ];
+
+    /** The query parameter naming another product to act for (admin key only, 1.38). */
+    public const AS_PRODUCT = 'as_product';
 
     /** The row uses the admin key when the product holds one, else the product key. */
     public const PREFER_ADMIN = 'prefer';

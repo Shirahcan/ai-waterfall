@@ -140,4 +140,44 @@ class ConsoleProxyTest extends TestCase
         $this->getJson('/admin/ai-console/knowledge/consultant/payments/instalments')->assertOk();
         $this->assertSame('/api/v1/knowledge/entries/consultant/payments/instalments', $this->sent[0]['request']->getUri()->getPath());
     }
+
+    public function test_acting_for_another_product_goes_with_the_admin_key(): void
+    {
+        $this->client('admin-key');
+        $this->mock->append(new Response(200, [], json_encode(['tasks' => []])));
+
+        $this->getJson('/admin/ai-console/tasks?as_product=mploynow')->assertOk();
+
+        $req = $this->sent[0]['request'];
+        $this->assertSame('Bearer admin-key', $req->getHeaderLine('Authorization'));
+        $this->assertSame('as_product=mploynow', $req->getUri()->getQuery());
+    }
+
+    public function test_acting_for_another_product_without_the_admin_key_is_refused_here(): void
+    {
+        $this->client();
+
+        $this->getJson('/admin/ai-console/personas?as_product=mploynow')->assertStatus(403)->assertJsonPath('error', 'admin_not_configured');
+        $this->assertSame([], $this->sent);
+    }
+
+    public function test_assist_revert_and_products_are_listed(): void
+    {
+        $this->client('admin-key');
+        $this->mock->append(
+            new Response(200, [], json_encode(['suggestion' => 'x'])),
+            new Response(200, [], json_encode(['changed' => true])),
+            new Response(200, [], json_encode(['products' => []])),
+        );
+
+        $this->postJson('/admin/ai-console/assist', ['field' => 'voice', 'text' => 'a', 'instruction' => 'b'])->assertOk();
+        $this->postJson('/admin/ai-console/tasks/summarize.note/revert', [])->assertOk();
+        $this->getJson('/admin/ai-console/products')->assertOk();
+
+        $this->assertSame('/api/v1/console/assist', $this->sent[0]['request']->getUri()->getPath());
+        $this->assertSame('Bearer trust', $this->sent[0]['request']->getHeaderLine('Authorization'));
+        $this->assertSame('ops@example.com', json_decode((string) $this->sent[1]['request']->getBody(), true)['updated_by']);
+        $this->assertSame('/api/v1/admin/products', $this->sent[2]['request']->getUri()->getPath());
+        $this->assertSame('Bearer admin-key', $this->sent[2]['request']->getHeaderLine('Authorization'));
+    }
 }
