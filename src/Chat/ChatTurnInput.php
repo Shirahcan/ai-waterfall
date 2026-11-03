@@ -11,6 +11,11 @@ namespace Shirahcan\AiClient\Chat;
  */
 final class ChatTurnInput
 {
+    /**
+     * @param  list<array{mime: string, filename: string, data_base64: string}>  $attachments
+     *         files on THIS turn (PDF, PNG, JPEG, WebP). A turn carrying any is sent as sensitive:
+     *         only credentials cleared for client documents read it.
+     */
     public function __construct(
         public readonly string $message,
         public readonly string $audience,
@@ -26,6 +31,7 @@ final class ChatTurnInput
         public readonly ?string $toolToken = null,
         public readonly ?string $conversationId = null,
         public readonly ?string $routeKey = null,
+        public readonly array $attachments = [],
     ) {}
 
     /** @return array<string, mixed> the `POST /v1/chat/turns` body */
@@ -52,6 +58,7 @@ final class ChatTurnInput
             'persona'         => $this->persona,
             'tool_token'      => $this->toolToken,
             'route_key'       => $this->routeKey,
-        ], static fn ($v) => $v !== null && $v !== '' && $v !== []);
+            'attachments'     => array_values($this->attachments),
+        ],static fn ($v) => $v !== null && $v !== '' && $v !== []);
     }
 }

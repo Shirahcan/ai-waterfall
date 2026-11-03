@@ -77,6 +77,16 @@ class ChatTurnTest extends TestCase
         $this->assertSame('tok', $body['tool_token']);
     }
 
+    public function test_a_turns_files_go_on_the_wire_and_an_empty_list_is_left_off(): void
+    {
+        $file = ['mime' => 'application/pdf', 'filename' => 'letter.pdf', 'data_base64' => 'JVBERg=='];
+
+        $wire = (new ChatTurnInput('Read this', 'admin', attachments: [$file]))->toWire();
+        $this->assertSame([$file], $wire['attachments']);
+
+        $this->assertArrayNotHasKey('attachments', (new ChatTurnInput('Hi', 'admin'))->toWire());
+    }
+
     public function test_an_error_event_or_a_dropped_stream_throws(): void
     {
         $client = $this->client(
