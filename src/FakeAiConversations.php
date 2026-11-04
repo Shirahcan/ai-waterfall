@@ -577,6 +577,48 @@ class FakeAiConversations extends AiConversations
         return array_values($groups);
     }
 
+    /** @var list<array<string, mixed>> gaps a test seeds with {@see seedGap()} (1.40) */
+    public array $gaps = [];
+
+    /** @param  array<string, mixed>  $gap */
+    public function seedGap(array $gap): void
+    {
+        $this->gaps[] = $gap + ['id' => (string) count($this->gaps), 'status' => 'open', 'occurrences' => 1,
+            'category' => 'no_capability', 'audience' => 'admin'];
+    }
+
+    public function gapsPage(array $filters = [], int $page = 1, int $perPage = 25): array
+    {
+        $rows = array_values(array_filter($this->gaps, fn (array $g) => ! array_diff_assoc(
+            array_intersect_key($filters, array_flip(['status', 'category', 'audience'])), $g)));
+        usort($rows, fn ($a, $b) => ($b['occurrences'] ?? 0) <=> ($a['occurrences'] ?? 0));
+
+        return ['gaps' => array_slice($rows, ($page - 1) * $perPage, $perPage),
+            'meta' => ['total' => count($rows), 'page' => $page, 'last_page' => max(1, (int) ceil(count($rows) / $perPage))]];
+    }
+
+    public function gapStats(): array
+    {
+        $open = array_filter($this->gaps, fn ($g) => ($g['status'] ?? '') === 'open');
+
+        return ['open' => count($open), 'planned' => count(array_filter($this->gaps, fn ($g) => ($g['status'] ?? '') === 'planned')),
+            'opened_30d' => count($this->gaps), 'fixed_30d' => 0, 'occurrences_30d' => array_sum(array_column($this->gaps, 'occurrences')),
+            'by_category' => array_count_values(array_column($open, 'category'))];
+    }
+
+    public function updateGap(string $id, string $status, ?string $note = null, ?string $by = null): array
+    {
+        foreach ($this->gaps as $i => $g) {
+            if ((string) $g['id'] === $id) {
+                $this->gaps[$i] = ['status' => $status, 'note' => $note ?? ($g['note'] ?? null), 'resolved_by' => $by] + $g;
+
+                return $this->gaps[$i];
+            }
+        }
+
+        return [];
+    }
+
     /**
      * ⚠ THE SAME FILTERS AND SHAPE AS THE SERVICE, so a product's triage-screen test cannot pass on
      * a filter production ignores.

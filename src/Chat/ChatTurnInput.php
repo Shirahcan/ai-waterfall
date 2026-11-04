@@ -32,6 +32,9 @@ final class ChatTurnInput
         public readonly ?string $conversationId = null,
         public readonly ?string $routeKey = null,
         public readonly array $attachments = [],
+        // The product's gap-report gate (1.40): ai-service records what this turn could not do and
+        // offers the model report_gap. Off unless the product turns it on.
+        public readonly bool $reportGaps = false,
     ) {}
 
     /** @return array<string, mixed> the `POST /v1/chat/turns` body */
@@ -59,6 +62,7 @@ final class ChatTurnInput
             'tool_token'      => $this->toolToken,
             'route_key'       => $this->routeKey,
             'attachments'     => array_values($this->attachments),
+            'report_gaps'     => $this->reportGaps ? true : null,
         ],static fn ($v) => $v !== null && $v !== '' && $v !== []);
     }
 }

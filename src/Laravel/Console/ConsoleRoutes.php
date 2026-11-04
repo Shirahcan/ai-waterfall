@@ -67,6 +67,10 @@ final class ConsoleRoutes
         ['GET',    'knowledge/{slug}',                    'api/v1/knowledge/entries/{slug}', false, null],
         ['GET',    'feedback',                            'api/v1/conversations/feedback', false, null],
         ['GET',    'feedback/stats',                      'api/v1/conversations/feedback/stats', false, null],
+        // What the assistant could not do, triaged by admins (1.40).
+        ['GET',    'gaps',                                'api/v1/gaps',                  false, null],
+        ['GET',    'gaps/stats',                          'api/v1/gaps/stats',            false, null],
+        ['PATCH',  'gaps/{id}',                           'api/v1/gaps/{id}',             false, 'by'],
         ['GET',    'conversations/stats',                 'api/v1/conversations/stats',   false, null],
 
         // Estate-wide (admin key only).

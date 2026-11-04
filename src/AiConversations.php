@@ -347,6 +347,38 @@ class AiConversations
     }
 
     /**
+     * What this product's assistant could not do, ranked by how often (1.40, ai-service
+     * assistant-gap-reports). The service is the only copy, as with votes.
+     *
+     * @param  array{status?: string, category?: string, audience?: string, since_days?: int}  $filters
+     * @return array{gaps: list<array<string, mixed>>, meta: array<string, mixed>}
+     */
+    public function gapsPage(array $filters = [], int $page = 1, int $perPage = 25): array
+    {
+        $query = array_filter(
+            array_intersect_key($filters, array_flip(['status', 'category', 'audience', 'since_days'])),
+            fn ($v) => $v !== null && $v !== '',
+        ) + ['page' => $page, 'per_page' => $perPage];
+
+        $payload = $this->client->getJson('api/v1/gaps', $query);
+
+        return ['gaps' => array_values((array) ($payload['data'] ?? [])), 'meta' => (array) ($payload['meta'] ?? [])];
+    }
+
+    /** @return array<string, mixed> open, planned, opened_30d, fixed_30d, occurrences_30d, by_category */
+    public function gapStats(): array
+    {
+        return (array) ($this->client->getJson('api/v1/gaps/stats')['data'] ?? []);
+    }
+
+    /** Triage one gap: open, planned, fixed or wont_fix. @return array<string, mixed> */
+    public function updateGap(string $id, string $status, ?string $note = null, ?string $by = null): array
+    {
+        return (array) ($this->client->patchJson('api/v1/gaps/'.rawurlencode($id),
+            array_filter(['status' => $status, 'note' => $note, 'by' => $by], fn ($v) => $v !== null))['data'] ?? []);
+    }
+
+    /**
      * One page of votes for a triage screen (P21c): the service is the only copy of a vote, so a
      * product's admin list reads here rather than from a table of its own.
      *
