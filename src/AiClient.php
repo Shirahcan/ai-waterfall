@@ -1162,7 +1162,7 @@ class AiClient
      *
      * @throws AiUnavailableException|AllProvidersFailedException|AiOverBudgetException
      */
-    public function transcribe(string $bytes, string $filename, string $task, ?string $language = null): array
+    public function transcribe(string $bytes, string $filename, string $task, ?string $language = null, ?string $prompt = null): array
     {
         $multipart = [
             ['name' => 'task', 'contents' => $task],
@@ -1171,6 +1171,11 @@ class AiClient
 
         if ($language !== null && $language !== '') {
             $multipart[] = ['name' => 'language', 'contents' => $language];
+        }
+
+        // 1.42 (live dictation): names and terms the speaker may say, so the provider spells them right.
+        if ($prompt !== null && trim($prompt) !== '') {
+            $multipart[] = ['name' => 'prompt', 'contents' => mb_substr(trim($prompt), 0, 1000)];
         }
 
         try {

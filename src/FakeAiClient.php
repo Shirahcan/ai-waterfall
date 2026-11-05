@@ -527,7 +527,7 @@ class FakeAiClient extends AiClient
     /** @var array<int, array<string, mixed>|Throwable> */
     private array $transcriptions = [];
 
-    /** @var list<array{filename: string, task: string, bytes: int}> What was sent to be transcribed. */
+    /** @var list<array{filename: string, task: string, bytes: int, language: ?string, prompt: ?string}> What was sent to be transcribed. */
     public array $transcribed = [];
 
     public function queueTranscription(string $text, ?float $durationSeconds = null, string $provider = 'fake-whisper'): static
@@ -551,9 +551,9 @@ class FakeAiClient extends AiClient
      * ⚠ AN EMPTY QUEUE REFUSES, like the real service with no cleared key. A test that forgot to
      * queue a transcript exercises the refusal path instead of receiving invented speech.
      */
-    public function transcribe(string $bytes, string $filename, string $task, ?string $language = null): array
+    public function transcribe(string $bytes, string $filename, string $task, ?string $language = null, ?string $prompt = null): array
     {
-        $this->transcribed[] = ['filename' => $filename, 'task' => $task, 'bytes' => strlen($bytes)];
+        $this->transcribed[] = ['filename' => $filename, 'task' => $task, 'bytes' => strlen($bytes), 'language' => $language, 'prompt' => $prompt];
         $next = array_shift($this->transcriptions);
 
         if ($next === null) {

@@ -66,6 +66,21 @@ class TranscribeTest extends TestCase
         $this->assertStringContainsString('candidate.intro_video', $body);
     }
 
+    public function test_the_names_go_as_a_prompt_only_when_given(): void
+    {
+        $client = $this->client([
+            $this->json(['text' => 'a', 'provider' => 'groq']),
+            $this->json(['text' => 'b', 'provider' => 'groq']),
+        ]);
+
+        $client->transcribe('X', 'p.wav', 'portify.dictation.messaging', 'en', 'Adebanjo Deborah, LMIA');
+        $client->transcribe('X', 'p.wav', 'portify.dictation.messaging');
+
+        $this->assertStringContainsString('name="prompt"', (string) $this->sent[0]->getBody());
+        $this->assertStringContainsString('Adebanjo Deborah, LMIA', (string) $this->sent[0]->getBody());
+        $this->assertStringNotContainsString('name="prompt"', (string) $this->sent[1]->getBody());
+    }
+
     public function test_no_cleared_key_is_a_refusal_not_an_outage(): void
     {
         $client = $this->client([$this->json([
@@ -81,7 +96,7 @@ class TranscribeTest extends TestCase
         $fake = (new FakeAiClient())->queueTranscription('hello there', 3.0);
 
         $this->assertSame('hello there', $fake->transcribe('abc', 'a.webm', 't')['text']);
-        $this->assertSame([['filename' => 'a.webm', 'task' => 't', 'bytes' => 3]], $fake->transcribed);
+        $this->assertSame([['filename' => 'a.webm', 'task' => 't', 'bytes' => 3, 'language' => null, 'prompt' => null]], $fake->transcribed);
 
         $this->expectException(AllProvidersFailedException::class);
         $fake->transcribe('abc', 'a.webm', 't');
