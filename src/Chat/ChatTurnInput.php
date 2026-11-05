@@ -35,6 +35,9 @@ final class ChatTurnInput
         // The product's gap-report gate (1.40): ai-service records what this turn could not do and
         // offers the model report_gap. Off unless the product turns it on.
         public readonly bool $reportGaps = false,
+        // The product's self-review gate (1.41): an ADMIN's assistant is offered review_conversation, to read
+        // its own product's past turns and what their tools did. ai-service refuses it for anyone else.
+        public readonly bool $selfReview = false,
     ) {}
 
     /** @return array<string, mixed> the `POST /v1/chat/turns` body */
@@ -63,6 +66,7 @@ final class ChatTurnInput
             'route_key'       => $this->routeKey,
             'attachments'     => array_values($this->attachments),
             'report_gaps'     => $this->reportGaps ? true : null,
+            'self_review'     => $this->selfReview ? true : null,
         ],static fn ($v) => $v !== null && $v !== '' && $v !== []);
     }
 }

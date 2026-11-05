@@ -42,6 +42,9 @@ class GapsTest extends TestCase
     {
         $this->assertTrue((new ChatTurnInput('hi', 'admin', reportGaps: true))->toWire()['report_gaps']);
         $this->assertArrayNotHasKey('report_gaps', (new ChatTurnInput('hi', 'admin'))->toWire());
+        // 1.41: self-review rides the same way, and is absent unless the product turns it on.
+        $this->assertTrue((new ChatTurnInput('hi', 'admin', selfReview: true))->toWire()['self_review']);
+        $this->assertArrayNotHasKey('self_review', (new ChatTurnInput('hi', 'admin'))->toWire());
     }
 
     public function test_the_list_and_the_triage_reach_their_routes(): void
