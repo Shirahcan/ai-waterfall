@@ -290,12 +290,14 @@ class AiConversations
      *
      * @return list<Conversation>
      */
-    public function forOwner(string $ownerRef, ?string $subjectRef = null, int $limit = 20): array
+    public function forOwner(string $ownerRef, ?string $subjectRef = null, int $limit = 20, ?bool $pinned = null): array
     {
         $payload = $this->client->getJson('api/v1/conversations', array_filter([
             'owner_ref'   => $ownerRef,
             'subject_ref' => $subjectRef,
             'limit'       => $limit,
+            // Only the pinned threads (true) or only the rest (false), 1.46.
+            'pinned'      => $pinned === null ? null : ($pinned ? 1 : 0),
         ], fn ($value) => $value !== null));
 
         return array_map(
@@ -347,15 +349,48 @@ class AiConversations
      * editable: moving a thread to another person is handing one person's transcript to
      * another, not editing a detail.
      *
-     * @param array<string, mixed> $changes  any of title, audience, subject_ref
+     * `pinned` (bool, 1.46) pins or unpins it; the service refuses an 11th pin with a 422
+     * `pin_limit` whose message is safe to show the person.
+     *
+     * @param array<string, mixed> $changes  any of title, audience, subject_ref, state, pinned
      */
     public function update(string $conversationId, array $changes): Conversation
     {
-        $allowed = array_intersect_key($changes, array_flip(['title', 'audience', 'subject_ref', 'state']));
+        $allowed = array_intersect_key($changes, array_flip(['title', 'audience', 'subject_ref', 'state', 'pinned']));
 
         $payload = $this->client->patchJson("api/v1/conversations/{$conversationId}", $allowed);
 
         return Conversation::fromArray((array) ($payload['conversation'] ?? []));
+    }
+
+    /**
+     * One person's threads that mention some words, newest first (1.46, chat-time-and-threads 01c).
+     *
+     * ⚠ THE SERVICE DECRYPTS AND SCANS that person's newest 200 threads, because titles and turns
+     * are ciphertext. `capped` true means they have more than that: say the search stopped early,
+     * never that an older thread does not exist.
+     *
+     * @return array{hits: list<array{conversation: Conversation, match: string, snippet: string, turnAt: ?\DateTimeImmutable}>, scanned: int, capped: bool}
+     */
+    public function search(string $ownerRef, string $q, int $limit = 20): array
+    {
+        $payload = $this->client->getJson('api/v1/conversations/search', [
+            'owner_ref' => $ownerRef,
+            'q'         => $q,
+            'limit'     => $limit,
+        ]);
+
+        return [
+            'hits' => array_map(fn (array $hit) => [
+                'conversation' => Conversation::fromArray((array) ($hit['conversation'] ?? [])),
+                'match'        => (string) ($hit['match'] ?? 'turn'),
+                'snippet'      => (string) ($hit['snippet'] ?? ''),
+                'turnAt'       => is_string($hit['turn_at'] ?? null) && $hit['turn_at'] !== ''
+                    ? new \DateTimeImmutable($hit['turn_at']) : null,
+            ], array_values((array) ($payload['hits'] ?? []))),
+            'scanned' => (int) ($payload['scanned'] ?? 0),
+            'capped'  => (bool) ($payload['capped'] ?? false),
+        ];
     }
 
     /**

@@ -46,6 +46,12 @@ final class Conversation
          * @var array<string, mixed>|null
          */
         public readonly ?array $state = null,
+
+        /*
+         * When the person pinned this thread (1.46, chat-time-and-threads 01b); null = not pinned.
+         * Last, so no existing caller's argument moves.
+         */
+        public readonly ?DateTimeImmutable $pinnedAt = null,
     ) {}
 
     /** @param array<string, mixed> $a */
@@ -65,6 +71,7 @@ final class Conversation
             createdAt: self::time($a['created_at'] ?? null),
             raw: $a,
             state: is_array($a['state'] ?? null) ? $a['state'] : null,
+            pinnedAt: self::time($a['pinned_at'] ?? null),
         );
     }
 

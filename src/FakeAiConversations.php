@@ -402,10 +402,13 @@ class FakeAiConversations extends AiConversations
     }
 
     /** @return list<Conversation> */
-    public function forOwner(string $ownerRef, ?string $subjectRef = null, int $limit = 20): array
+    public function forOwner(string $ownerRef, ?string $subjectRef = null, int $limit = 20, ?bool $pinned = null): array
     {
-        $rows = array_filter($this->threads, function (array $row) use ($ownerRef, $subjectRef) {
+        $rows = array_filter($this->threads, function (array $row) use ($ownerRef, $subjectRef, $pinned) {
             if ($row['owner_ref'] !== $ownerRef) {
+                return false;
+            }
+            if ($pinned !== null && ($pinned !== (($row['pinned_at'] ?? null) !== null))) {
                 return false;
             }
 
@@ -449,9 +452,65 @@ class FakeAiConversations extends AiConversations
             $this->threads[$conversationId][$field] = $value;
         }
 
+        // Pins as the service does (1.46): the first moment is kept, an 11th is refused.
+        if (array_key_exists('pinned', $changes)) {
+            $row = $this->threads[$conversationId];
+            if ($changes['pinned'] && ($row['pinned_at'] ?? null) === null) {
+                $pins = count(array_filter($this->threads, fn (array $t) => $t['owner_ref'] === $row['owner_ref'] && ($t['pinned_at'] ?? null) !== null));
+                if ($pins >= self::PIN_LIMIT) {
+                    throw new Exceptions\AiRequestRefusedException('You can pin up to '.self::PIN_LIMIT.' conversations. Unpin one first.', 422, 'pin_limit');
+                }
+                $this->threads[$conversationId]['pinned_at'] = $this->now();
+            } elseif (! $changes['pinned']) {
+                $this->threads[$conversationId]['pinned_at'] = null;
+            }
+        }
+
         $this->writes[] = ['update' => $conversationId, 'changes' => $changes];
 
         return Conversation::fromArray($this->threads[$conversationId]);
+    }
+
+    /** The service's pin cap, mirrored so a product's test meets the same refusal. */
+    public const PIN_LIMIT = 10;
+
+    /**
+     * Search as the service does (1.46): this owner's threads, newest first, title before turns,
+     * case- and accent-folded, the newest 200 only.
+     *
+     * @return array{hits: list<array{conversation: Conversation, match: string, snippet: string, turnAt: ?DateTimeImmutable}>, scanned: int, capped: bool}
+     */
+    public function search(string $ownerRef, string $q, int $limit = 20): array
+    {
+        $this->writes[] = ['search' => $ownerRef];
+        $fold = fn (string $s): string => mb_strtolower(class_exists(\Normalizer::class)
+            ? (string) (\Normalizer::normalize($s, \Normalizer::FORM_D) ?: $s) : $s);
+        $strip = fn (string $s): string => (string) preg_replace('/\p{Mn}+/u', '', $fold($s));
+        $needle = $strip($q);
+
+        $owned = $this->forOwner($ownerRef, null, 201);
+        $capped = count($owned) > 200;
+        $owned = array_slice($owned, 0, 200);
+
+        $hits = [];
+        foreach ($owned as $thread) {
+            if (count($hits) >= $limit) {
+                break;
+            }
+            if (str_contains($strip((string) $thread->title), $needle)) {
+                $hits[] = ['conversation' => $thread, 'match' => 'title', 'snippet' => (string) $thread->title, 'turnAt' => null];
+                continue;
+            }
+            foreach (array_reverse($this->turns[$thread->id] ?? []) as $turn) {
+                if (in_array($turn['role'], ['user', 'assistant'], true) && str_contains($strip((string) ($turn['body'] ?? '')), $needle)) {
+                    $hits[] = ['conversation' => $thread, 'match' => 'turn', 'snippet' => (string) $turn['body'],
+                        'turnAt' => new DateTimeImmutable((string) $turn['created_at'])];
+                    break;
+                }
+            }
+        }
+
+        return ['hits' => $hits, 'scanned' => count($owned), 'capped' => $capped];
     }
 
     /**
