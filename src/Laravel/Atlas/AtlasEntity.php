@@ -67,7 +67,49 @@ final class AtlasEntity
          * @var list<string>
          */
         public readonly array $identityKeys = [],
+        /**
+         * What ONE audience calls this record type, when it is not the type's own name (1.48.0):
+         * `['employer' => ['label' => 'Role', 'plural' => 'roles', 'aliases' => ['position', 'job']]]`.
+         *
+         * ⚠ PEOPLE SEARCH IN THEIR OWN WORDS. An employer's "roles" are Portify's `case` rows; asked
+         * for "roles opened by month", Porter searched "role opened", matched nothing, and told the
+         * employer it had no opened date while `case.opened_month` sat right there (2026-11-06).
+         *
+         * @var array<string, array{label?: string, plural?: string, aliases?: list<string>}>
+         */
+        public readonly array $audienceNames = [],
     ) {}
+
+    /** The record type's name as $audience says it. */
+    public function labelFor(string $audience): string
+    {
+        return (string) ($this->audienceNames[$audience]['label'] ?? $this->label);
+    }
+
+    public function pluralFor(string $audience): string
+    {
+        return (string) ($this->audienceNames[$audience]['plural'] ?? $this->plural);
+    }
+
+    /**
+     * Every word $audience may use for this type beyond its key: its own label and plural when they
+     * differ from the type's, then its aliases. Empty when the audience uses the type's own name.
+     *
+     * @return list<string>
+     */
+    public function aliasesFor(string $audience): array
+    {
+        $names = $this->audienceNames[$audience] ?? [];
+        if ($names === []) {
+            return [];
+        }
+        $words = array_merge([$names['label'] ?? null, $names['plural'] ?? null], (array) ($names['aliases'] ?? []));
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn ($w) => is_string($w) ? mb_strtolower(trim($w)) : '',
+            $words,
+        ), static fn (string $w) => $w !== '')));
+    }
 
     public function appliesToAudience(string $audience): bool
     {

@@ -65,6 +65,8 @@ final class WidgetProvider implements EntityProvider
             deepLinks: ['owner' => '/widgets/{id}'],
             defaultSort: ['key' => 'name', 'dir' => 'asc'],
             sampleQuestions: ['How many widgets are open?'],
+            // The owner calls them gadgets (a product's own words for one audience).
+            audienceNames: ['owner' => ['label' => 'Gadget', 'plural' => 'gadgets', 'aliases' => ['gizmo']]],
         );
     }
 }
@@ -193,13 +195,33 @@ class AtlasEngineTest extends TestCase
 
         $defs = array_column($data->definitions('owner'), 'description', 'name');
         $this->assertStringContainsString('THEIR OWN records (roles, applications, offers...)', $defs[DataTools::SEARCH]);
-        $this->assertStringContainsString('Record types you can query: widget (widgets).', $defs[DataTools::SEARCH]);
+        $this->assertStringContainsString('Record types you can query: widget (gadgets).', $defs[DataTools::SEARCH]);
         $this->assertStringContainsString('(never a bare role id)', $defs[DataTools::QUERY]);
 
         $out = $data->run(DataTools::QUERY, ['plan' => ['targets' => [['id' => 't', 'entity' => 'widget', 'select' => ['name']]]]], $this->person(2), 'owner');
         $this->assertTrue($out['ok']);
         $this->assertSame('data_table', $out['card']['type']);
         $this->assertSame([['name' => 'Crank']], array_map(fn ($r) => ['name' => $r['name']], $out['card']['payload']['meta']['result']['targets'][0]['rows']));
+    }
+
+    public function test_an_audience_finds_a_type_and_its_fields_in_its_own_words(): void
+    {
+        $tools = $this->tools($this->registry(['widgets.view']));
+
+        // "gadget status" = the owner's word for the type + a field: the field is found.
+        $hit = $tools->searchSchema('gadget status', 'owner', $this->person(1))['matches'][0];
+        $this->assertSame('widget', $hit['entity']);
+        $this->assertTrue($hit['entity_matched']);
+        $this->assertSame(['status'], array_column($hit['dimensions'], 'key'));
+        // The type word alone names the type and lists no fields (no flood of every field).
+        $alone = $tools->searchSchema('gizmos', 'owner', $this->person(1))['matches'][0];
+        $this->assertArrayNotHasKey('dimensions', $alone);
+        // Staff have no such words: "gadget status" means nothing to them.
+        $this->assertSame([], $tools->searchSchema('gadget status', 'staff', $this->person(9))['matches']);
+
+        $data = new DataTools($tools, $this->registry(['widgets.view']), new DataToolWords());
+        $this->assertStringContainsString('widget (gadgets)', array_column($data->definitions('owner'), 'description', 'name')[DataTools::SEARCH]);
+        $this->assertStringContainsString('widget (widgets)', array_column($data->definitions('staff'), 'description', 'name')[DataTools::SEARCH]);
     }
 
     public function test_viewer_time_names_the_zone_and_refuses_an_unknown_one(): void

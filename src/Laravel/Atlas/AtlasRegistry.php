@@ -172,8 +172,9 @@ class AtlasRegistry
     {
         return array_map(fn (AtlasEntity $entity) => array_filter([
             'key' => $entity->key,
-            'label' => $entity->label,
-            'plural' => $entity->plural,
+            'label' => $entity->labelFor($audience),
+            'plural' => $entity->pluralFor($audience),
+            'also_called' => $entity->aliasesFor($audience) ?: null,
             // One example is enough to disambiguate "case" from "case note".
             'example' => $entity->sampleQuestions[0] ?? null,
         ], static fn ($v) => $v !== null), $this->forAudience($audience, $user));
@@ -183,11 +184,13 @@ class AtlasRegistry
     {
         $permitted = fn ($field) => $this->mayHold($user, $field->permission);
 
-        return array_map(function (AtlasEntity $entity) use ($permitted) {
-            return [
+        return array_map(function (AtlasEntity $entity) use ($permitted, $audience) {
+            return array_filter([
                 'key' => $entity->key,
-                'label' => $entity->label,
-                'plural' => $entity->plural,
+                'label' => $entity->labelFor($audience),
+                'plural' => $entity->pluralFor($audience),
+                // The audience's own words for this type (1.48.0): searched, and shown so the model uses them.
+                'also_called' => $entity->aliasesFor($audience) ?: null,
                 'dimensions' => array_values(array_map(
                     fn (AtlasDimension $d) => array_filter([
                         'key' => $d->key,
@@ -219,7 +222,7 @@ class AtlasRegistry
                     $entity->relations,
                 ),
                 'sample_questions' => $entity->sampleQuestions,
-            ];
+            ], static fn ($v) => $v !== null);
         }, $this->forAudience($audience, $user));
     }
 }

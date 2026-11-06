@@ -129,8 +129,9 @@ final class DataTools
         }
 
         try {
+            // In the asker's own words where the type has them ("case (roles)" for an employer, 1.48.0).
             $labels = array_map(
-                static fn ($e) => "{$e->key} ({$e->plural})",
+                static fn ($e) => "{$e->key} ({$e->pluralFor($audience)})",
                 array_values(array_filter($this->registry->all(), static fn ($e) => $e->appliesToAudience($audience))),
             );
         } catch (Throwable $e) {

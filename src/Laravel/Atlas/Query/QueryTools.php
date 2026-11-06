@@ -78,17 +78,30 @@ class QueryTools
         foreach ($this->registry->describeForAudience($audience, $user) as $entity) {
             $hit = ['entity' => $entity['key'], 'label' => $entity['label']];
             $found = false;
+            $aliases = (array) ($entity['also_called'] ?? []);
 
             // The sample questions count: they are written in the words people actually use.
             if ($this->mentions($needle, [$entity['key'], $entity['label'], $entity['plural'] ?? '',
-                implode(' ', $entity['sample_questions'] ?? [])])) {
+                implode(' ', $entity['sample_questions'] ?? []), implode(' ', $aliases)])) {
+                $hit['entity_matched'] = true;
+                $found = true;
+            }
+
+            /*
+             * ⚠ "ROLE OPENED" IS A TYPE WORD PLUS A FIELD WORD. Every word must sit in ONE haystack, so a
+             * phrase naming the type in the asker's words ("role") plus a field ("opened") matched nothing.
+             * When the phrase uses one of THIS audience's names for the type, the rest of the phrase is
+             * looked for in its fields (1.48.0). A type with no audience names searches exactly as before.
+             */
+            $fieldNeedle = $aliases === [] ? $needle : $this->withoutWords($needle, $aliases);
+            if ($fieldNeedle !== $needle) {
                 $hit['entity_matched'] = true;
                 $found = true;
             }
 
             $dimensions = [];
-            foreach ($entity['dimensions'] as $dimension) {
-                if (! $this->mentions($needle, [
+            foreach ($fieldNeedle === '' ? [] : $entity['dimensions'] as $dimension) {
+                if (! $this->mentions($fieldNeedle, [
                     $dimension['key'],
                     $dimension['label'] ?? '',
                     $dimension['description'] ?? '',
@@ -109,8 +122,8 @@ class QueryTools
             }
 
             $metrics = [];
-            foreach ($entity['metrics'] as $metric) {
-                if ($this->mentions($needle, [$metric['key'], $metric['label'] ?? ''])) {
+            foreach ($fieldNeedle === '' ? [] : $entity['metrics'] as $metric) {
+                if ($this->mentions($fieldNeedle, [$metric['key'], $metric['label'] ?? ''])) {
                     $metrics[] = ['key' => $metric['key'], 'label' => $metric['label'] ?? null];
                     $found = true;
                 }
@@ -555,6 +568,22 @@ class QueryTools
      * "Error cluster" (2026-10-30): Porter then told an admin the record type did not exist. Every word
      * of the term (3+ letters, a plural 's' ignored) must appear in the same haystack.
      */
+    /**
+     * $needle with every word that is one of $names removed ("role opened" without ["role", "roles"] is
+     * "opened"); singular and plural compare equal. Unchanged when no word is a name.
+     *
+     * @param  list<string>  $names  lower-case
+     */
+    private function withoutWords(string $needle, array $names): string
+    {
+        $stem = static fn (string $w) => strlen($w) > 3 ? rtrim($w, 's') : $w;
+        $named = array_map($stem, $names);
+        $words = preg_split('/[^a-z0-9_]+/', $needle, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $kept = array_values(array_filter($words, static fn (string $w) => ! in_array($stem($w), $named, true)));
+
+        return count($kept) === count($words) ? $needle : implode(' ', $kept);
+    }
+
     private function mentions(string $needle, array $haystacks): bool
     {
         $words = array_values(array_filter(
