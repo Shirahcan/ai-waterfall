@@ -72,6 +72,20 @@ class RowMirrorTest extends TestCase
         $this->assertSame(1, $this->ai->conversations()->turnCount($thread));
     }
 
+    public function test_how_a_question_was_asked_reaches_the_service_through_the_mirror(): void
+    {
+        $row = MirroredThread::create([]);
+        $mirror = new RowMirror($this->ai);
+        $thread = $mirror->thread($row, 'ai_conversation_id', 'user:1');
+
+        $mirror->turn($row, 'ai_turn_id', $thread, ConversationTurn::ROLE_USER, 'How much did I earn?',
+            ['how' => ['surface' => 'panel', 'input' => 'dictated', 'page' => '/consultant/earnings']]);
+
+        $stats = $this->ai->conversations()->statsFor(new \DateTimeImmutable('-1 hour'), new \DateTimeImmutable('+1 minute'));
+        $this->assertSame(['dictated' => 1], $stats['turns']['by_input'], 'the seam must forward `how`, or it is silently dropped');
+        $this->assertSame(['panel' => 1], $stats['turns']['by_surface']);
+    }
+
     public function test_a_row_not_yet_inserted_carries_the_id_in_its_insert(): void
     {
         $row = new MirroredThread();

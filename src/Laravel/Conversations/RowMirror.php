@@ -61,7 +61,8 @@ final class RowMirror
      * Append this message row as a turn, once, and remember the turn id in `$column`.
      *
      * @param  array{structured?: ?array, refused?: bool, persona_key?: ?string, grounded?: ?bool,
-     *               provenance_class?: ?string, occurred_at?: ?\DateTimeInterface}  $turn
+     *               provenance_class?: ?string, occurred_at?: ?\DateTimeInterface,
+     *               how?: array{surface?: string, input?: string, page?: string}}  $turn
      * @return ConversationTurn|null  null when the row already carries its turn id
      */
     public function turn(Model $row, string $column, string $conversationId, string $role, ?string $body, array $turn = []): ?ConversationTurn
@@ -81,6 +82,8 @@ final class RowMirror
             grounded: $turn['grounded'] ?? null,
             provenanceClass: $turn['provenance_class'] ?? null,
             occurredAt: $turn['occurred_at'] ?? null,
+            // ⚠ FORWARDED, or a product's `how` is silently dropped at this seam (1.45.1).
+            how: is_array($turn['how'] ?? null) ? $turn['how'] : [],
         );
 
         $this->remember($row, $column, $appended->id);
