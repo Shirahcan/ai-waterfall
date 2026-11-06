@@ -64,6 +64,10 @@ class ConversationUsageTest extends TestCase
         $this->assertSame(2, $stats['turns']['by_owner'][0]['questions']);
         $this->assertSame(1.0, $stats['turns']['by_owner'][0]['grounded_rate']);
         $this->assertSame(['dictated' => 1, 'unrecorded' => 1], $stats['turns']['by_input']);
+        // The same keys the service returns, so a product reading grounding is tested against something.
+        $this->assertSame(['replies_stating_provenance' => 1, 'grounded' => 1, 'grounded_rate' => 1.0], $stats['turns']['grounding_by_audience']['consultant']);
+        $this->assertSame(['user' => 2, 'assistant' => 1], $stats['turns']['by_role']);
+        $this->assertSame(0, $stats['turns']['refused']);
 
         $this->expectException(RuntimeException::class);
         $fake->append($thread->id, 'user', 'q3', how: ['page' => '/admin/cases/01a1a377-6910-7392-b426-ed66f154f4fa']);

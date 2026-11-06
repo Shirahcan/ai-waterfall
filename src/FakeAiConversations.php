@@ -735,15 +735,21 @@ class FakeAiConversations extends AiConversations
         $owners = [];
         $bySurface = [];
         $byInput = [];
+        $byRole = [];
+        $grounding = [];
+        $refused = 0;
         $total = 0;
 
         foreach ($this->threads as $id => $row) {
+            $audience = ($row['audience'] ?? null) === null || $row['audience'] === '' ? 'unset' : $row['audience'];
             foreach ($this->turns[$id] ?? [] as $turn) {
                 $at = substr((string) $turn['created_at'], 0, 19);
                 if ($at < $from || $at > $to) {
                     continue;
                 }
                 $total++;
+                $byRole[$turn['role']] = ($byRole[$turn['role']] ?? 0) + 1;
+                $refused += ! empty($turn['refused']) ? 1 : 0;
                 $owner = (string) ($row['owner_ref'] ?? '');
                 $o = $owners[$owner] ??= ['owner_ref' => $owner, 'audience' => $row['audience'] ?? null, 'questions' => 0, 'replies' => 0,
                     'conversations' => [], 'stated' => 0, 'grounded' => 0, 'refusals' => 0];
@@ -757,6 +763,9 @@ class FakeAiConversations extends AiConversations
                     if (($turn['grounded'] ?? null) !== null) {
                         $o['stated']++;
                         $o['grounded'] += $turn['grounded'] ? 1 : 0;
+                        $grounding[$audience] ??= ['replies_stating_provenance' => 0, 'grounded' => 0];
+                        $grounding[$audience]['replies_stating_provenance']++;
+                        $grounding[$audience]['grounded'] += $turn['grounded'] ? 1 : 0;
                     }
                 }
                 $o['refusals'] += ! empty($turn['refused']) ? 1 : 0;
@@ -774,7 +783,19 @@ class FakeAiConversations extends AiConversations
         return [
             'product' => $this->product,
             'window' => ['since' => $since->format(DATE_ATOM), 'until' => ($until ?? new DateTimeImmutable('now'))->format(DATE_ATOM)],
-            'turns' => ['total' => $total, 'by_owner' => $byOwner, 'by_surface' => $bySurface, 'by_input' => $byInput],
+            /*
+             * ⚠ THE SAME KEYS THE SERVICE RETURNS (1.45.2). This fake once returned only who and how,
+             * so a product reading `grounding_by_audience` got null in every test while the service
+             * reported 1 grounded reply of 35 when 25 were; neither defect could fail a test.
+             * `cost_micros` is 0 here as there: a chat answer is several AI calls, so read its cost
+             * from the usage ledger (task `chat.turn`), never from the turns.
+             */
+            'turns' => ['total' => $total, 'by_role' => $byRole, 'by_owner' => $byOwner, 'by_surface' => $bySurface, 'by_input' => $byInput,
+                'refused' => $refused,
+                'grounding_by_audience' => array_map(fn (array $g) => $g + [
+                    'grounded_rate' => $g['replies_stating_provenance'] > 0 ? round($g['grounded'] / $g['replies_stating_provenance'], 4) : null,
+                ], $grounding),
+                'cost_micros' => 0],
         ];
     }
 
