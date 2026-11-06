@@ -234,6 +234,10 @@ class AtlasEngineTest extends TestCase
         // The type word alone names the type and lists no fields (no flood of every field).
         $alone = $tools->searchSchema('gizmos', 'owner', $this->person(1))['matches'][0];
         $this->assertArrayNotHasKey('dimensions', $alone);
+        // ...but says what can be asked of it, or the model never sees the date field and goes back to a summary.
+        $this->assertContains('made_at (Made)', $alone['date_fields']);
+        $this->assertContains('status (Status)', $alone['group_fields']);
+        $this->assertNotContains('paid_at (Paid)', $alone['date_fields'], 'never a field this person may not read');
         // Staff have no such words: "gadget status" means nothing to them.
         $this->assertSame([], $tools->searchSchema('gadget status', 'staff', $this->person(9))['matches']);
 

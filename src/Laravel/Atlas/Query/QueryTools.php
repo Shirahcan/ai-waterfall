@@ -141,6 +141,15 @@ class QueryTools
                 $hit['metrics'] = $metrics;
             }
 
+            /*
+             * ⚠ A TYPE FOUND BY NAME MUST SHOW WHAT CAN BE ASKED OF IT. Searching "roles" matched the type and
+             * returned no field, so the model never saw `opened_at`, went back to the summary and told an
+             * employer the platform does not hold the date (Portify local, 2026-11-06).
+             */
+            if (($hit['entity_matched'] ?? false) && $dimensions === [] && $metrics === []) {
+                $hit += $this->fieldsToTry($entity);
+            }
+
             $matches[] = $hit;
         }
 
@@ -568,6 +577,27 @@ class QueryTools
      * "Error cluster" (2026-10-30): Porter then told an admin the record type did not exist. Every word
      * of the term (3+ letters, a plural 's' ignored) must appear in the same haystack.
      */
+    /**
+     * The fields most questions about a type need (when, and by what), keys and labels only, so a search
+     * that found the type by name is enough to write the query.
+     *
+     * @param  array<string, mixed>  $entity  {@see AtlasRegistry::describeForAudience()}
+     * @return array<string, mixed>
+     */
+    private function fieldsToTry(array $entity): array
+    {
+        $named = static fn (array $d) => $d['key'].(isset($d['label']) ? " ({$d['label']})" : '');
+        $dimensions = (array) ($entity['dimensions'] ?? []);
+        $dates = array_filter($dimensions, static fn (array $d) => in_array($d['type'] ?? '', ['date', 'datetime'], true));
+        $groups = array_filter($dimensions, static fn (array $d) => ($d['groupable'] ?? false) === true);
+
+        return array_filter([
+            'date_fields'  => array_values(array_map($named, array_slice($dates, 0, 8))),
+            'group_fields' => array_values(array_map($named, array_slice($groups, 0, 12))),
+            'next'         => $dimensions === [] ? null : 'describe_data_entity lists every field of this type.',
+        ], static fn ($v) => $v !== [] && $v !== null);
+    }
+
     /**
      * $needle with every word that is one of $names removed ("role opened" without ["role", "roles"] is
      * "opened"); singular and plural compare equal. Unchanged when no word is a name.
