@@ -115,8 +115,20 @@ class FakeAiConversations extends AiConversations
         ?bool $grounded = null,
         ?string $provenanceClass = null,
         ?\DateTimeInterface $occurredAt = null,
+        array $how = [],
     ): ConversationTurn {
         $this->mustHold($conversationId);
+
+        // ⚠ NO MORE PERMISSIVE THAN THE SERVICE: it 422s an unknown surface / input, or a page holding an id.
+        if (isset($how['surface']) && ! in_array($how['surface'], self::SURFACES, true)) {
+            throw new RuntimeException("ai-service refuses the surface \"{$how['surface']}\".");
+        }
+        if (isset($how['input']) && ! in_array($how['input'], self::INPUTS, true)) {
+            throw new RuntimeException("ai-service refuses the input \"{$how['input']}\".");
+        }
+        if (isset($how['page']) && preg_match('/[0-9a-f]{8}-[0-9a-f]{4}-|[0-9]{4,}/i', (string) $how['page']) === 1) {
+            throw new RuntimeException('ai-service refuses a page that carries an id: send the route template.');
+        }
 
         if (($body === null || $body === '') && ($structured === null || $structured === [])) {
             throw new RuntimeException(
@@ -145,6 +157,9 @@ class FakeAiConversations extends AiConversations
             'persona_version' => $personaVersion,
             'usage_id'        => $usageId,
             'client_ref'      => $clientRef,
+            'surface'         => $how['surface'] ?? null,
+            'input'           => $how['input'] ?? null,
+            'page'            => $how['page'] ?? null,
             /*
              * ⚠ UTC, BOTH SIDES. Turns are ordered by comparing these strings; a product clock in
              * Toronto and a fake clock in UTC sorted a later turn first. The service compares real
@@ -692,6 +707,75 @@ class FakeAiConversations extends AiConversations
         }
 
         return array_slice(array_reverse($rows), 0, $limit);
+    }
+
+    /** @var array<string, mixed>|null what `toolUsage()` answers; set it with `setToolUsage()` */
+    private ?array $toolUsageAnswer = null;
+
+    /** @param  array<string, mixed>  $answer */
+    public function setToolUsage(array $answer): void
+    {
+        $this->toolUsageAnswer = $answer;
+    }
+
+    public function toolUsage(\DateTimeInterface $since, ?\DateTimeInterface $until = null, ?string $audience = null): array
+    {
+        return ($this->toolUsageAnswer ?? []) + ['turns' => 0, 'turns_with_no_product_tool' => 0, 'by_audience' => [], 'tools' => [], 'capped' => false];
+    }
+
+    /**
+     * The service's any-window aggregate, computed over the fake's turns: who asked (`by_owner`) and
+     * how (`by_surface`, `by_input`, with `unrecorded` for turns that carry none), as the service does.
+     */
+    public function statsFor(\DateTimeInterface $since, ?\DateTimeInterface $until = null): array
+    {
+        $utc = new \DateTimeZone('UTC');
+        $from = DateTimeImmutable::createFromInterface($since)->setTimezone($utc)->format('Y-m-d\TH:i:s');
+        $to = DateTimeImmutable::createFromInterface($until ?? new DateTimeImmutable('now'))->setTimezone($utc)->format('Y-m-d\TH:i:s');
+        $owners = [];
+        $bySurface = [];
+        $byInput = [];
+        $total = 0;
+
+        foreach ($this->threads as $id => $row) {
+            foreach ($this->turns[$id] ?? [] as $turn) {
+                $at = substr((string) $turn['created_at'], 0, 19);
+                if ($at < $from || $at > $to) {
+                    continue;
+                }
+                $total++;
+                $owner = (string) ($row['owner_ref'] ?? '');
+                $o = $owners[$owner] ??= ['owner_ref' => $owner, 'audience' => $row['audience'] ?? null, 'questions' => 0, 'replies' => 0,
+                    'conversations' => [], 'stated' => 0, 'grounded' => 0, 'refusals' => 0];
+                $o['conversations'][$id] = true;
+                if ($turn['role'] === ConversationTurn::ROLE_USER) {
+                    $o['questions']++;
+                    $bySurface[$turn['surface'] ?? 'unrecorded'] = ($bySurface[$turn['surface'] ?? 'unrecorded'] ?? 0) + 1;
+                    $byInput[$turn['input'] ?? 'unrecorded'] = ($byInput[$turn['input'] ?? 'unrecorded'] ?? 0) + 1;
+                } elseif ($turn['role'] === ConversationTurn::ROLE_ASSISTANT) {
+                    $o['replies']++;
+                    if (($turn['grounded'] ?? null) !== null) {
+                        $o['stated']++;
+                        $o['grounded'] += $turn['grounded'] ? 1 : 0;
+                    }
+                }
+                $o['refusals'] += ! empty($turn['refused']) ? 1 : 0;
+                $owners[$owner] = $o;
+            }
+        }
+
+        $byOwner = array_values(array_map(fn (array $o) => [
+            'owner_ref' => $o['owner_ref'], 'audience' => $o['audience'], 'questions' => $o['questions'], 'replies' => $o['replies'],
+            'conversations' => count($o['conversations']), 'grounded_rate' => $o['stated'] > 0 ? round($o['grounded'] / $o['stated'], 4) : null,
+            'refusals' => $o['refusals'],
+        ], $owners));
+        usort($byOwner, fn ($a, $b) => $b['questions'] <=> $a['questions']);
+
+        return [
+            'product' => $this->product,
+            'window' => ['since' => $since->format(DATE_ATOM), 'until' => ($until ?? new DateTimeImmutable('now'))->format(DATE_ATOM)],
+            'turns' => ['total' => $total, 'by_owner' => $byOwner, 'by_surface' => $bySurface, 'by_input' => $byInput],
+        ];
     }
 
     public function stats(int $days = 30): array

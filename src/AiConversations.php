@@ -104,6 +104,7 @@ class AiConversations
         ?bool $grounded = null,
         ?string $provenanceClass = null,
         ?\DateTimeInterface $occurredAt = null,
+        array $how = [],
     ): ConversationTurn {
         /*
          * ⚠ BUILT EXPLICITLY, NOT FILTERED BY TRUTHINESS, and the reason is a bug this method
@@ -171,6 +172,17 @@ class AiConversations
             'usage_id' => $usageId, 'client_ref' => $clientRef] as $field => $value) {
             if ($value !== null) {
                 $turn[$field] = $value;
+            }
+        }
+
+        /*
+         * ⚠ HOW A QUESTION WAS ASKED (1.45.0): `surface` (one of SURFACES), `input` (one of INPUTS)
+         * and `page` (a route TEMPLATE with ids replaced, e.g. "/admin/cases/{id}"). Clear text in
+         * the service, so "who dictated this week" is a count, never a read of anyone's words.
+         */
+        foreach (['surface', 'input', 'page'] as $field) {
+            if (isset($how[$field]) && is_string($how[$field]) && $how[$field] !== '') {
+                $turn[$field] = $how[$field];
             }
         }
 
@@ -474,6 +486,43 @@ class AiConversations
     public function stats(int $days = 30): array
     {
         return $this->client->getJson('api/v1/conversations/stats', ['days' => $days]);
+    }
+
+    /** Where a question can be asked (the service refuses anything else). */
+    public const SURFACES = ['panel', 'widget', 'public_site', 'consultant_site', 'email_reply', 'api'];
+
+    /** How a question can be asked. */
+    public const INPUTS = ['typed', 'dictated', 'hands_free', 'attachment', 'slash', 'mention', 'follow_up', 'suggestion', 'ask_again', 'edit'];
+
+    /**
+     * The same aggregate for ANY window (1.45.0), with who asked (`turns.by_owner`: the product's own
+     * person refs, busiest first) and how (`turns.by_surface`, `turns.by_input`; `unrecorded` for turns
+     * from before the fields existed). Nothing is decrypted to produce it.
+     *
+     * @return array<string, mixed>
+     */
+    public function statsFor(\DateTimeInterface $since, ?\DateTimeInterface $until = null): array
+    {
+        return $this->client->getJson('api/v1/conversations/stats', array_filter([
+            'since' => $since->format(DATE_ATOM),
+            'until' => $until?->format(DATE_ATOM),
+        ]));
+    }
+
+    /**
+     * What the assistant was used for in a window, from the tool NAMES its turns called (1.45.0):
+     * `tools` => name => {turns, calls, failed, builtin}, plus `turns_with_no_product_tool`.
+     * Traces exist from 2026-11-05.
+     *
+     * @return array<string, mixed>
+     */
+    public function toolUsage(\DateTimeInterface $since, ?\DateTimeInterface $until = null, ?string $audience = null): array
+    {
+        return $this->client->getJson('api/v1/conversations/tool-usage', array_filter([
+            'since' => $since->format(DATE_ATOM),
+            'until' => $until?->format(DATE_ATOM),
+            'audience' => $audience,
+        ]));
     }
 
     /**
