@@ -54,6 +54,8 @@ final class WidgetProvider implements EntityProvider
                 new AtlasDimension(key: 'name', label: 'Name', path: 'name', type: 'string'),
                 new AtlasDimension(key: 'status', label: 'Status', path: 'status', type: 'enum', groupable: true, values: ['open', 'shut']),
                 new AtlasDimension(key: 'price', label: 'Price', path: 'price', type: 'money', permission: 'widgets.money'),
+                new AtlasDimension(key: 'made_at', label: 'Made', path: 'created_at', type: 'datetime'),
+                new AtlasDimension(key: 'paid_at', label: 'Paid', path: 'updated_at', type: 'datetime', permission: 'widgets.money'),
             ],
             metrics: [
                 new AtlasMetric(key: 'widget_count', label: 'Widgets', kind: 'count', aggregate: true,
@@ -168,6 +170,22 @@ class AtlasEngineTest extends TestCase
 
         $this->assertSame(['name'], array_column($run['result']->targets[0]->columns, 'key'));
         $this->assertArrayNotHasKey('price', $run['result']->targets[0]->rows[0]);
+    }
+
+    public function test_a_guessed_field_is_answered_with_the_real_keys_this_person_may_use(): void
+    {
+        // Portify test box, 2026-11-06: `created_at` was dropped and a client was told there was no such date.
+        $notes = fn (array $select) => implode(' ', $this->tools($this->registry())->runQuery(
+            ['targets' => [['id' => 't', 'entity' => 'widget', 'select' => array_merge(['status'], $select)]]], 'owner', $this->person(1))['preview']['targets'][0]['notes'] ?? []);
+
+        $date = $notes(['created_at']);
+        $this->assertStringContainsString("Omitted column 'created_at' on widget - there is no such field. Use the real key: made_at (Made).", $date);
+        $this->assertStringContainsString('never tell the person the field does not exist', $date);
+        $this->assertStringNotContainsString('paid_at', $date, 'a field this person may not see is never offered');
+
+        $this->assertStringContainsString('Use the real key: name (Name)', $notes(['title']));
+        // Nothing close: back to describing the record type.
+        $this->assertStringContainsString('describe the entity for its field keys', $notes(['flavour']));
     }
 
     public function test_a_query_is_audited_by_key_never_by_value(): void

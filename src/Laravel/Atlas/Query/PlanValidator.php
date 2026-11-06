@@ -3,6 +3,7 @@
 namespace Shirahcan\AiClient\Laravel\Atlas\Query;
 
 use Illuminate\Contracts\Auth\Authenticatable;
+use Shirahcan\AiClient\Laravel\Atlas\AtlasDimension;
 use Shirahcan\AiClient\Laravel\Atlas\AtlasEntity;
 use Shirahcan\AiClient\Laravel\Atlas\AtlasRegistry;
 use Shirahcan\AiClient\Laravel\Atlas\Query\Dto\QueryFilter;
@@ -155,7 +156,7 @@ class PlanValidator
                 // ⚠ Two different facts. "Not permitted for your role" about a key that simply does not
                 // exist was repeated to an admin as "due dates aren't available to my role" (2026-10-31).
                 $notes[] = $dim === null
-                    ? "Omitted column '{$key}' on {$entity->key} - there is no such field; describe the entity for its field keys."
+                    ? $this->noSuchField($entity, $key, $user)
                     : "Omitted column '{$key}' on {$entity->key} - not available or not permitted for your role.";
 
                 continue;
@@ -265,6 +266,62 @@ class PlanValidator
             renderGroup: $target->renderGroup,
             offset: $target->offset,
         );
+    }
+
+    /**
+     * What to tell the model about a field key it guessed, naming the real ones (1.49.0).
+     *
+     * ⚠ "DESCRIBE THE ENTITY" WAS NOT ENOUGH. Asked when each case was opened, the model guessed
+     * `created_at`, the column was dropped, and it told a client "case records don't include a creation
+     * date" while `opened_at` sat on the same record (Portify test box, 2026-11-06). The real keys go
+     * in the note itself, so the next step is a corrected query, not another lookup it can skip.
+     */
+    private function noSuchField(AtlasEntity $entity, string $key, Authenticatable $user): string
+    {
+        $near = $this->nearestFields($entity, $key, $user);
+
+        return "Omitted column '{$key}' on {$entity->key} - there is no such field"
+            .($near === []
+                ? '; describe the entity for its field keys.'
+                : '. Use the real key: '.implode(', ', $near).'. Run the query again with it before you answer, and never tell the person the field does not exist.');
+    }
+
+    /**
+     * The fields a guessed key probably meant: every date for a date-looking key, the record's name for
+     * a name-looking one, else fields sharing a word with it. Only what this person may select.
+     *
+     * @return list<string> `key (Label)`
+     */
+    private function nearestFields(AtlasEntity $entity, string $key, Authenticatable $user): array
+    {
+        $usable = array_filter($entity->dimensions, fn (AtlasDimension $d) => $d->selectable && $this->permitted($d->permission, $user));
+        $words = array_filter(preg_split('/[^a-z0-9]+/', mb_strtolower($key)) ?: [], static fn (string $w) => strlen($w) >= 3);
+
+        if (preg_match('/(_at|_on|date|time|when|created|opened|started|updated)$/i', $key) === 1) {
+            $near = array_filter($usable, static fn (AtlasDimension $d) => in_array($d->type, ['date', 'datetime'], true));
+        } elseif (array_intersect($words, ['name', 'title', 'label']) !== []) {
+            $primary = array_filter($usable, static fn (AtlasDimension $d) => $d->key === $entity->primaryLabelDimension()?->key);
+            $named = array_filter($usable, static function (AtlasDimension $d) {
+                return preg_match('/name|title/i', $d->key.' '.$d->label) === 1;
+            });
+            $near = $primary + $named;
+        } else {
+            $near = array_filter($usable, static function (AtlasDimension $d) use ($words) {
+                $hay = mb_strtolower($d->key.' '.$d->label);
+                foreach ($words as $word) {
+                    if (str_contains($hay, $word)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+        }
+
+        return array_values(array_map(
+            static fn (AtlasDimension $d) => "{$d->key} ({$d->label})",
+            array_slice($near, 0, 6),
+        ));
     }
 
     private function permitted(?string $permission, Authenticatable $user): bool
