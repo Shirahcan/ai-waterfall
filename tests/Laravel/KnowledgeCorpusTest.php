@@ -30,6 +30,22 @@ class KnowledgeCorpusTest extends TestCase
         file_put_contents($this->dir.'/'.$relative, "---\n{$front}\n---\n\n{$body}\n");
     }
 
+    public function test_a_regulated_entry_reaches_the_service_flagged_and_with_its_link(): void
+    {
+        // ai-service's search_knowledge reads extra.regulated and extra.source_url, nothing else.
+        $this->file('fee.md', "slug: fee\nquestion: Fee?\ndescription: The fee.\nregulated: true\nexpires_at: 2027-01-31\n"
+            ."sources: [not a link, 'https://www.canada.ca/en/fees.html']");
+        $this->file('01-nav/plain.md', "slug: plain\nquestion: Where?\ndescription: Here.");
+
+        $wire = array_map(fn ($d) => KnowledgeCorpus::toWire($d), (new KnowledgeCorpus($this->dir))->all());
+        $bySlug = array_column($wire, 'extra', 'slug');
+
+        $this->assertTrue($bySlug['fee']['regulated']);
+        $this->assertSame('https://www.canada.ca/en/fees.html', $bySlug['fee']['source_url']);
+        $this->assertFalse($bySlug['plain']['regulated']);
+        $this->assertNull($bySlug['plain']['source_url']);
+    }
+
     public function test_an_entry_is_read_with_its_partition_hard_filter_and_extra_keys(): void
     {
         $this->file('01-nav/a.md', "slug: nav.a\nquestion: Where?\ndescription: Here.\naudiences: [client]\nrequires_gates: [x.enabled]\nreviewed_at: 2026-10-30");

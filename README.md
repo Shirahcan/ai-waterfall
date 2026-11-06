@@ -338,6 +338,25 @@ failure be read as "this person does not exist".
 ⚠ Without it a product's data tools answer questions about SETS of records only: Portify told an
 admin a listed user did not exist after searching field names for her name.
 
+### The data engine: the Atlas (1.47.0)
+
+"How many roles are open?", "payments last week by currency", "which candidates have waited longest":
+questions about SETS of records, answered by a safe SELECT the model plans and the kit validates. Was
+Portify's Porter Atlas; moved here so every product's assistant runs on one engine.
+
+- **Describe your records.** One `Laravel\Atlas\EntityProvider` per record type returning an
+  `AtlasEntity`: dimensions (fields, with `sensitive` and per-field `permission`), metrics (count, sum),
+  relations, a ROW SCOPE per audience (`fn (Builder $q, $user)`: a self-limited audience sees only its
+  own rows), deep links and sample questions. The model only ever names keys; it never writes SQL.
+- **Register them.** Subclass `Laravel\Atlas\AtlasRegistry`: `defaultProviders()` returns your list,
+  `defaultAccess()` your `AtlasAccess` (does this user hold this permission?). Bind the kit class to
+  your subclass. ⚠ The kit's default access grants NOTHING: forget it and permissioned data hides.
+- **Offer the tools.** `Laravel\Atlas\DataTools` serves `search_data_schema`, `describe_data_entity`,
+  `list_data_values` and `run_data_query` (the last draws a `data_table` card). Bind a
+  `DataToolWords` with your own examples ("LMIA" for Portify, "shortlisted" for MployNow).
+- **Optional.** Bind `Laravel\Atlas\Query\QueryAudit` to record what was looked up (keys only, never a
+  filter value). `Time\ViewerTime` writes every date in the asker's zone, named.
+
 ### The plumbing kit (1.34.0)
 
 The four things every product's assistant used to write for itself:

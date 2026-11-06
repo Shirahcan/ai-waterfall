@@ -79,8 +79,28 @@ final class KnowledgeCorpus
                 'source_fingerprint' => $doc['fingerprint'],
                 'reviewed_at'      => $doc['reviewed_at'],
                 'regulated_advice' => $doc['regulated'],
+                /*
+                 * ⚠ THE SERVICE READS THESE TWO NAMES. ai-service's `search_knowledge` hands the model
+                 * `extra.regulated` and `extra.source_url`; until 1.47.0 the kit sent only
+                 * `regulated_advice`, so no entry synced through the kit ever reached a model flagged
+                 * as regulated or carrying its link (found in Portify's own publisher, 2026-11-06).
+                 */
+                'regulated'        => (bool) $doc['regulated'],
+                'source_url'       => self::firstUrl($doc['sources'] ?? []),
             ],
         ];
+    }
+
+    /** @param  mixed  $sources */
+    private static function firstUrl(mixed $sources): ?string
+    {
+        foreach ((array) $sources as $s) {
+            if (is_string($s) && preg_match('#^https?://#i', trim($s)) === 1) {
+                return trim($s);
+            }
+        }
+
+        return null;
     }
 
     /** @return list<string> */
@@ -153,6 +173,8 @@ final class KnowledgeCorpus
             'reviewed_at'     => self::date($meta['reviewed_at'] ?? null),
             'expires_at'      => self::date($expires),
             'regulated'       => $regulated,
+            // Where a regulated fact comes from (`sources:` list or one `source_url:`), so the model can cite it.
+            'sources'         => $list($meta['sources'] ?? (isset($meta['source_url']) ? [$meta['source_url']] : [])),
             'source_ref'      => 'corpus:'.$relative,
             // Content hash, so an unchanged file is a no-op on every sync.
             'fingerprint'     => hash('sha256', $raw),
