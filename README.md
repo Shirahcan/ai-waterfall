@@ -49,6 +49,10 @@ the others.
    bind `DictationSettings` to the product's DB-backed gate and daily minutes. The browser half is ai-ui's
    composer `dictation` prop (`transcribe` posts each phrase there). The audio is never stored; the minutes
    are per person per day; the usage ledger's task is `<product>.dictation.<surface>`.
+8. The conversation list (1.52): `ThreadRoutes::mount('assistant')` inside the signed-in API group (paged,
+   pinned, searched, renamed; own rows only), and bind `ThreadIndex` to an `EloquentThreadIndex` naming the
+   product's conversation model, its gate and the owner key its threads are filed under in ai-service. The
+   browser half is ai-ui's `useAssistantThreads`.
 
 **`php artisan ai:doctor`** checks the key, that the service answers, that every template on
 disk is live, and the tool host's credential, and exits non-zero on any failure.
