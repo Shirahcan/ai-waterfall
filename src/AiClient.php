@@ -297,8 +297,49 @@ class AiClient
             'per_provider_timeout' => $this->perProviderTimeout,
         ], fn ($v) => $v !== null && $v !== []);
 
+        yield from $this->openStream('api/v1/generate/stream', $body, $onOpen);
+    }
+
+    /**
+     * One of this product's task templates, STREAMED (2026-11-07): the service renders the template
+     * exactly as {@see runTask()} does, then streams its tokens through the ordinary stream endpoint,
+     * with the same real cancel ({@see cancelStream()}). The template's persona, named ladder and
+     * sensitivity apply as they do on a buffered run. A run that carries files cannot stream (call
+     * {@see runTask()}); a JSON template streams the one `$field` named.
+     *
+     * @param  array<string, scalar|null>  $vars
+     * @param  ?callable(string $streamId): void  $onOpen
+     * @return iterable<AiStreamEvent>
+     *
+     * @throws AiUnavailableException When the service is unreachable or refuses the run.
+     */
+    public function runTaskStream(string $key, array $vars, ?string $field = null, ?callable $onOpen = null): iterable
+    {
+        $body = array_filter([
+            'vars'                 => $vars === [] ? new \stdClass() : $vars,
+            'field'                => $field,
+            'budget_seconds'       => $this->budgetSeconds,
+            'correlation'          => $this->correlation,
+            'persona'              => $this->persona,
+            'audience'             => $this->personaAudience,
+            'per_provider_timeout' => $this->perProviderTimeout,
+            'route_key'            => $this->routeKey,
+        ], fn ($v) => $v !== null && $v !== []);
+
+        yield from $this->openStream('api/v1/tasks/'.rawurlencode($key).'/run/stream', $body, $onOpen);
+    }
+
+    /**
+     * Open an SSE stream and read its events: the ONE place the stream wire lives (socket timeouts,
+     * headers, error translation), for a raw generation and a template run alike.
+     *
+     * @param  array<string, mixed>  $body
+     * @return iterable<AiStreamEvent>
+     */
+    private function openStream(string $path, array $body, ?callable $onOpen): iterable
+    {
         try {
-            $response = $this->http->post('api/v1/generate/stream', [
+            $response = $this->http->post($path, [
                 'headers'     => $this->headers() + ['Accept' => 'text/event-stream'],
                 'json'        => $body,
                 'http_errors' => false,

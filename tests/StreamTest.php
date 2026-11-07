@@ -243,4 +243,37 @@ class StreamTest extends TestCase
 
         $this->assertSame(AiStreamEvent::CANCELLED, end($events)->type);
     }
+
+    public function test_a_task_template_run_streams_from_its_own_endpoint_with_its_variables(): void
+    {
+        $history = [];
+        $stack = HandlerStack::create(new MockHandler([$this->sse(
+            $this->frame('open', ['stream_id' => 'run-1']),
+            $this->frame('token', ['text' => '<heading text=Hi/>']),
+            $this->frame('done', ['provider' => 'claude', 'model' => 'haiku']),
+        )]));
+        $stack->push(\GuzzleHttp\Middleware::history($history));
+        $client = new AiClient('http://127.0.0.1:8007', 'test-key', 60, new Guzzle(['handler' => $stack, 'base_uri' => 'http://127.0.0.1:8007/']));
+
+        $opened = null;
+        $events = $this->drain($client->runTaskStream('sites.pml.edit', ['payload' => 'Make a heading'], onOpen: function (string $id) use (&$opened) {
+            $opened = $id;
+        }));
+
+        $this->assertSame('/api/v1/tasks/sites.pml.edit/run/stream', $history[0]['request']->getUri()->getPath());
+        $sent = json_decode((string) $history[0]['request']->getBody(), true);
+        $this->assertSame(['payload' => 'Make a heading'], $sent['vars']);
+        $this->assertArrayNotHasKey('field', $sent);
+        $this->assertSame('run-1', $opened);
+        $this->assertSame('<heading text=Hi/>', $events[1]->text());
+        $this->assertSame(AiStreamEvent::DONE, end($events)->type);
+    }
+
+    public function test_a_refused_task_stream_maps_to_the_familiar_exception(): void
+    {
+        $client = $this->client(new Response(422, [], json_encode(['error' => 'missing_vars', 'message' => 'Template needs: payload.'])));
+
+        $this->expectException(\Throwable::class);
+        $this->drain($client->runTaskStream('sites.pml.edit', []));
+    }
 }

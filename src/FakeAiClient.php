@@ -200,6 +200,31 @@ class FakeAiClient extends AiClient
         }
     }
 
+    /**
+     * A streamed task run yields the queued stream (see queueStreamText), like generateStream; the log
+     * records the template key and its variables, so a test can assert what was asked.
+     *
+     * @return iterable<AiStreamEvent>
+     */
+    public function runTaskStream(string $key, array $vars, ?string $field = null, ?callable $onOpen = null): iterable
+    {
+        $this->log->calls[] = ['task' => $key, 'mode' => 'task_stream', 'payload' => ['vars' => $vars, 'field' => $field]];
+
+        $events = $this->streamEvents;
+        $this->streamEvents = [];
+
+        foreach ($events as $event) {
+            if ($event->type === AiStreamEvent::OPEN && $onOpen !== null) {
+                $id = $event->streamId();
+                if ($id !== null) {
+                    $onOpen($id);
+                }
+            }
+
+            yield $event;
+        }
+    }
+
     /** @var array<int, array<int, AiStreamEvent>> events for each next chatTurn(), in order */
     private array $chatTurns = [];
 
