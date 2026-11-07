@@ -30,7 +30,8 @@ final class DictationController extends Controller
             $data = $request->validate([
                 // One phrase: the recorder cuts at 25 s, which is ~800 KB of 16 kHz WAV.
                 'audio' => ['required', 'file', 'max:2048', 'mimetypes:audio/wav,audio/x-wav,audio/wave,audio/ogg,audio/mpeg,audio/mp4,audio/webm,video/webm'],
-                'surface' => ['required', 'string', 'regex:/^[a-z][a-z0-9_]{0,23}$/'],
+                'surface' => array_merge(['required', 'string', 'regex:/^[a-z][a-z0-9_]{0,23}$/'],
+                    $settings->surfaces() === [] ? [] : [\Illuminate\Validation\Rule::in($settings->surfaces())]),
                 'language' => ['nullable', 'string', 'max:8'],
                 'terms' => ['nullable', 'array', 'max:40'],
                 'terms.*' => ['string', 'max:60'],

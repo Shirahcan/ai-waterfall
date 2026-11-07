@@ -88,6 +88,8 @@ class DictationRoutesTest extends TestCase
             public function enabled(): bool { return false; }
 
             public function dailyMinutes(): int { return 60; }
+
+            public function surfaces(): array { return []; }
         });
         $this->post('/ai/dictation', ['audio' => $this->wav(1), 'surface' => 'mira'])->assertStatus(404);
     }
@@ -99,6 +101,16 @@ class DictationRoutesTest extends TestCase
             ->assertStatus(503)->assertJsonPath('success', false);
 
         $this->postJson('/ai/dictation', ['surface' => 'Not A Surface'])->assertStatus(422);
+    }
+
+    public function test_a_product_that_names_its_surfaces_refuses_any_other(): void
+    {
+        $this->app['config']->set('ai-client.dictation.surfaces', ['mira', 'messaging']);
+        $this->ai->queueTranscription('ok');
+
+        $this->post('/ai/dictation', ['audio' => $this->wav(1), 'surface' => 'somewhere'])->assertStatus(302);
+        $this->postJson('/ai/dictation', ['audio' => $this->wav(1), 'surface' => 'somewhere'])->assertStatus(422);
+        $this->post('/ai/dictation', ['audio' => $this->wav(1), 'surface' => 'mira'])->assertOk();
     }
 
     public function test_terms_never_carry_the_words_already_written_and_a_wav_is_timed_exactly(): void

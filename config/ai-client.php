@@ -81,6 +81,8 @@ return [
         'enabled' => (bool) env('AI_DICTATION_ENABLED', false),
         'daily_minutes' => (int) env('AI_DICTATION_DAILY_MINUTES', 60),
         'product' => env('AI_DICTATION_PRODUCT'),
+        // Where a person can dictate, by the product's own names. Empty = any lowercase word.
+        'surfaces' => [],
     ],
 
     'tools' => [

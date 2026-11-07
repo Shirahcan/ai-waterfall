@@ -16,4 +16,9 @@ final class ConfigDictationSettings implements DictationSettings
 
         return max(0, (int) (is_numeric($minutes) ? $minutes : DictationTranscriber::DEFAULT_DAILY_MINUTES));
     }
+
+    public function surfaces(): array
+    {
+        return array_values(array_filter((array) config('ai-client.dictation.surfaces', []), 'is_string'));
+    }
 }

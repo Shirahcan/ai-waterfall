@@ -17,4 +17,13 @@ interface DictationSettings
 
     /** Minutes of speech per person per day. 0 means none. */
     public function dailyMinutes(): int;
+
+    /**
+     * The product's own names for where a person can dictate ("messaging", "porter", "mira"): anything else is
+     * a 422, so a typo in a caller is caught rather than booked under a made-up surface. Empty = any
+     * lowercase word.
+     *
+     * @return list<string>
+     */
+    public function surfaces(): array;
 }
