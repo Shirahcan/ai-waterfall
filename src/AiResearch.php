@@ -100,13 +100,18 @@ class AiResearch
         return $this->client->postJson('api/v1/research/run', array_filter($request, fn ($v) => $v !== null && $v !== []));
     }
 
-    public function fetch(string $url, ?int $timeout = null, ?int $maxBytes = null): ?array
+    /**
+     * One page: its title and readable text. With $withHtml (a product that REBUILDS the page, such
+     * as a site builder) the page's markup comes too, as `html`; `text` is never markup either way.
+     */
+    public function fetch(string $url, ?int $timeout = null, ?int $maxBytes = null, bool $withHtml = false): ?array
     {
         try {
             return $this->client->postJson('api/v1/research/fetch', array_filter([
-                'url'       => $url,
-                'timeout'   => $timeout,
-                'max_bytes' => $maxBytes,
+                'url'          => $url,
+                'timeout'      => $timeout,
+                'max_bytes'    => $maxBytes,
+                'include_html' => $withHtml ?: null,
             ], fn ($v) => $v !== null));
         } catch (AllProvidersFailedException) {
             /*

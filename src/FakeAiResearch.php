@@ -28,7 +28,7 @@ class FakeAiResearch extends AiResearch
         return $this->fake->nextSearch($task, $query);
     }
 
-    public function fetch(string $url, ?int $timeout = null, ?int $maxBytes = null): ?array
+    public function fetch(string $url, ?int $timeout = null, ?int $maxBytes = null, bool $withHtml = false): ?array
     {
         return $this->fake->pageFor($url);
     }

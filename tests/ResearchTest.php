@@ -118,6 +118,21 @@ class ResearchTest extends TestCase
         $this->assertSame('body text', $page['text']);
     }
 
+    public function test_a_fetch_asks_for_the_markup_only_when_told_to(): void
+    {
+        $client = $this->client([
+            $this->json(['url' => 'https://example.com', 'title' => 'x', 'text' => 't', 'bytes' => 1]),
+            $this->json(['url' => 'https://example.com', 'title' => 'x', 'text' => 't', 'bytes' => 1, 'html' => '<h1>x</h1>']),
+        ]);
+
+        $client->research()->fetch('https://example.com');
+        $this->assertArrayNotHasKey('include_html', json_decode((string) $this->sent[0]->getBody(), true));
+
+        $page = $client->research()->fetch('https://example.com', withHtml: true);
+        $this->assertTrue(json_decode((string) $this->sent[1]->getBody(), true)['include_html']);
+        $this->assertSame('<h1>x</h1>', $page['html']);
+    }
+
     /**
      * ⚠ AN UNFETCHABLE PAGE IS NULL, NOT AN OUTAGE.
      *
