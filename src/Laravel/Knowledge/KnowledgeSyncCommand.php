@@ -6,9 +6,9 @@ use Illuminate\Console\Command;
 use Shirahcan\AiClient\AiClient;
 
 /**
- * `ai:knowledge-sync`: publish a product's knowledge folder to ai-service, and retire every entry
- * whose file is gone. For a product with no rules of its own about which entries are served; one
- * that gates entries (Portify) reads the same {@see KnowledgeCorpus} and decides status itself.
+ * `ai:knowledge-sync`: publish a product's knowledge to ai-service, and retire every entry whose file is
+ * gone. One step, for every product (1.50.0: it also holds back an entry whose `requires_gates` are off,
+ * and publishes what a bound {@see KnowledgeSource} adds, such as admin-written entries).
  */
 final class KnowledgeSyncCommand extends Command
 {
@@ -32,17 +32,53 @@ final class KnowledgeSyncCommand extends Command
             return self::SUCCESS;
         }
 
+        $gates = $this->laravel->bound(KnowledgeGates::class) ? $this->laravel->make(KnowledgeGates::class) : null;
+        $held = 0;
+        $wire = [];
+        foreach ($docs as $doc) {
+            $closed = self::firstClosedGate((array) ($doc['meta']['requires_gates'] ?? []), $gates);
+            $entry = KnowledgeCorpus::toWire($doc, $closed === null ? 'published' : 'unpublished');
+            if ($closed !== null) {
+                $entry['extra']['unpublished_reason'] = "gate {$closed} is off";
+                $held++;
+            }
+            $wire[] = $entry;
+        }
+        foreach ($this->laravel->tagged('ai-client.knowledge.sources') as $source) {
+            /** @var KnowledgeSource $source */
+            $wire = array_merge($wire, $source->entries());
+        }
+
         if ($this->option('dry-run')) {
-            $this->info(count($docs).' entries would be synced from '.$corpus->dir().'.');
+            $this->info(count($wire)." entries would be synced ({$held} held back by a switch) from ".$corpus->dir().'.');
 
             return self::SUCCESS;
         }
 
-        $totals = $ai->knowledge()->syncEntries(array_map(static fn (array $d) => KnowledgeCorpus::toWire($d), $docs));
-        $retired = $ai->knowledge()->retireEntries(array_column($docs, 'slug'));
+        $totals = $ai->knowledge()->syncEntries($wire);
+        $retired = $ai->knowledge()->retireEntries(array_column($wire, 'slug'));
 
-        $this->info(sprintf('Knowledge synced: synced=%d unchanged=%d retired=%d', $totals['synced'], $totals['unchanged'], $retired));
+        $this->info(sprintf('Knowledge synced: synced=%d unchanged=%d held=%d retired=%d', $totals['synced'], $totals['unchanged'], $held, $retired));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The first required switch that is off or unknown, or null when the entry may be served.
+     *
+     * ⚠ FAILS CLOSED. An unknown key, or a product that never bound {@see KnowledgeGates}, holds the entry
+     * back: a typo must not publish a dark feature's knowledge.
+     *
+     * @param  array<int, mixed>  $keys
+     */
+    public static function firstClosedGate(array $keys, ?KnowledgeGates $gates): ?string
+    {
+        foreach ($keys as $key) {
+            if ($gates === null || $gates->isOpen((string) $key) !== true) {
+                return (string) $key;
+            }
+        }
+
+        return null;
     }
 }

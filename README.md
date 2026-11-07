@@ -356,6 +356,23 @@ Portify's Porter Atlas; moved here so every product's assistant runs on one engi
   `DataToolWords` with your own examples ("LMIA" for Portify, "shortlisted" for MployNow).
 - **Optional.** Bind `Laravel\Atlas\Query\QueryAudit` to record what was looked up (keys only, never a
   filter value). `Time\ViewerTime` writes every date in the asker's zone, named.
+- **An audience's own words (1.48.0).** `AtlasEntity::$audienceNames`: Portify's `case` is "Role / roles"
+  for an employer. The schema search finds the type and its fields in those words.
+
+⚠ Fix what the tools RETURN before adding a prompt rule. A model told "never count a list yourself" still
+counted, wrongly; a fact that states its own counts was right first time.
+
+### Knowledge that cannot go stale (1.50.0)
+
+`ai:knowledge-sync` is one step for every product:
+
+- **Dark features.** Bind `Laravel\Knowledge\KnowledgeGates`. An entry with `requires_gates` whose switch is
+  off is sent `unpublished`, with the reason, and goes live on the next sync after the flip. Unknown key,
+  or no binding: held back, so a typo never publishes a dark feature.
+- **Other entries.** Tag a `Laravel\Knowledge\KnowledgeSource` with `ai-client.knowledge.sources` for what is
+  not a file (entries an admin wrote, entries generated from code). The retire step keeps them.
+- **The build.** `use Laravel\Knowledge\ChecksKnowledgeCorpus` in a test: every route, tool and switch an
+  entry names must exist, no regulated entry may be past its expiry, every audience must be real.
 
 ### The plumbing kit (1.34.0)
 
