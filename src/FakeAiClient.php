@@ -60,9 +60,38 @@ class FakeAiClient extends AiClient
         return $this->log->correlation ?? [];
     }
 
+    /**
+     * Every array this fake keeps (its queues and its records), shared with its clones (2026-11-08).
+     *
+     * ⚠ THE LOG WAS FIXED, THE QUEUES WERE NOT. A clone copies arrays by value, and
+     * products run nearly every call through a `with*()` clone (Portify's
+     * AiJsonCaller wraps each template run in `withCorrelation()`). So each run
+     * shifted the FIRST queued result off its OWN copy and the original never
+     * moved on: a test that queued "what Porter needs" and then "the page" handed
+     * the page writer the needs answer, and every test queueing two results for
+     * two such calls silently received the first one twice. Records written by a
+     * clone (`published`, `continued`, `researchRequests`...) vanished the same way.
+     *
+     * Each array property declared on this class is held here BY REFERENCE. PHP
+     * keeps a property that is a reference held elsewhere as a reference when the
+     * object is cloned, so a clone shifts from, and records into, the very same
+     * arrays as the instance the test holds.
+     *
+     * @var array<string, mixed>
+     */
+    private array $shared = [];
+
     public function __construct()
     {
         $this->log = new FakeCallLog();
+
+        foreach ((new \ReflectionClass(self::class))->getProperties() as $property) {
+            $name = $property->getName();
+
+            if ($name !== 'shared' && ! $property->isStatic() && $property->getDeclaringClass()->getName() === self::class && (string) $property->getType() === 'array') {
+                $this->shared[$name] = &$this->{$name};
+            }
+        }
 
         // Deliberately does NOT call parent::__construct: there is no base URL and
         // no trust key, and a fake that needed either would defeat its own purpose.
