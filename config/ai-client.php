@@ -72,6 +72,17 @@ return [
         'file' => env('AI_EVAL_FILE'),
     ],
 
+    /*
+    | Live dictation (1.51, `DictationRoutes::mount()`). These are the FALLBACK: a product whose switches
+    | live in its database binds `DictationSettings` instead, so an admin flips the gate and changes the
+    | minutes without a deploy. `product` prefixes the usage ledger's task (default: the app's name).
+    */
+    'dictation' => [
+        'enabled' => (bool) env('AI_DICTATION_ENABLED', false),
+        'daily_minutes' => (int) env('AI_DICTATION_DAILY_MINUTES', 60),
+        'product' => env('AI_DICTATION_PRODUCT'),
+    ],
+
     'tools' => [
         'product'  => env('AI_TOOLS_PRODUCT', ''),
         'secret'   => env('AI_TOOLS_SECRET', env('AI_CHAT_TOOLS_SECRET', '')),

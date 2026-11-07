@@ -45,6 +45,10 @@ the others.
    `php artisan ai:tools-register`; compose the shared tools (`set_reminder`,
    `report_answer_gap`) into its catalog. The UI is `@shirahcan/ai-ui`.
 6. Knowledge: a Markdown folder and `php artisan ai:knowledge-sync`.
+7. Dictation (1.51): `DictationRoutes::mount()` inside the signed-in API group (POST `ai/dictation`), and
+   bind `DictationSettings` to the product's DB-backed gate and daily minutes. The browser half is ai-ui's
+   composer `dictation` prop (`transcribe` posts each phrase there). The audio is never stored; the minutes
+   are per person per day; the usage ledger's task is `<product>.dictation.<surface>`.
 
 **`php artisan ai:doctor`** checks the key, that the service answers, that every template on
 disk is live, and the tool host's credential, and exits non-zero on any failure.

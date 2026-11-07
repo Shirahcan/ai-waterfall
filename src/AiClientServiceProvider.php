@@ -74,6 +74,9 @@ class AiClientServiceProvider extends ServiceProvider
         $this->app->scoped(HeldConversations::class, fn () => new HeldConversations);
         // P21d: the same rule for turns - one read per request, never kept longer.
         $this->app->scoped(\Shirahcan\AiClient\Laravel\Conversations\HeldTurns::class, fn () => new \Shirahcan\AiClient\Laravel\Conversations\HeldTurns);
+
+        // 1.51: live dictation. A product with DB-backed switches binds its own settings; this is the fallback.
+        $this->app->bindIf(Laravel\Dictation\DictationSettings::class, Laravel\Dictation\ConfigDictationSettings::class);
     }
 
     public function boot(): void
@@ -88,6 +91,12 @@ class AiClientServiceProvider extends ServiceProvider
                 Limit::perMinute(120)->by('ai-tools:'.sha1((string) $request->header('X-Ai-Tool-Token', 'manifest'))),
                 Limit::perMinute(1200)->by('ai-tools-host:'.$request->ip()),
             ]);
+        }
+
+        // One phrase every 1.5 s per person is more than anyone speaks; a loop posting faster is not a person.
+        if (RateLimiter::limiter(Laravel\Dictation\DictationRoutes::LIMITER) === null) {
+            RateLimiter::for(Laravel\Dictation\DictationRoutes::LIMITER, fn ($request) => Limit::perMinute(40)
+                ->by('dictation:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
         }
 
         if ($this->app->runningInConsole()) {
