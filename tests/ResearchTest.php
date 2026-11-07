@@ -216,6 +216,48 @@ class ResearchTest extends TestCase
     |--------------------------------------------------------------------------
     */
 
+    public function test_a_render_returns_the_page_as_a_person_sees_it(): void
+    {
+        $client = $this->client([$this->json(['url' => 'https://example.com', 'title' => 'x', 'html' => '<h1 style="font-size:64px">x</h1>', 'text' => 'x', 'bytes' => 1, 'screenshot' => 'AAAA', 'blocked' => 0])]);
+
+        $page = $client->research()->render('https://example.com');
+
+        $this->assertSame('AAAA', $page['screenshot']);
+        $this->assertSame(['url' => 'https://example.com'], json_decode((string) $this->sent[0]->getBody(), true));
+        $this->assertSame('api/v1/research/render', ltrim($this->sent[0]->getUri()->getPath(), '/'));
+    }
+
+    public function test_an_artifact_render_sends_its_markup_and_only_cdn_reach(): void
+    {
+        $client = $this->client([$this->json(['url' => 'about:artifact', 'title' => '', 'html' => '<div>x</div>', 'text' => 'x', 'bytes' => 1, 'screenshot' => null, 'blocked' => 0])]);
+
+        $client->research()->render('<div id=root></div>', isHtml: true);
+
+        $this->assertSame(['html' => '<div id=root></div>', 'allow' => 'cdn'], json_decode((string) $this->sent[0]->getBody(), true));
+    }
+
+    /** Busy, not set up, or not renderable: each means "use fetch()", never "ai-service is down". */
+    public function test_a_page_that_cannot_be_rendered_is_null_so_the_caller_fetches_instead(): void
+    {
+        $client = $this->client([
+            $this->json(['error' => 'busy', 'message' => 'busy'], 429),
+            $this->json(['error' => 'render_unavailable', 'message' => 'no browser'], 503),
+            $this->json(['error' => 'not_renderable', 'message' => 'nope'], 422),
+        ]);
+
+        $this->assertNull($client->research()->render('https://a.example'));
+        $this->assertNull($client->research()->render('https://b.example'));
+        $this->assertNull($client->research()->render('https://c.example'));
+    }
+
+    public function test_the_fake_serves_a_queued_render_and_null_otherwise(): void
+    {
+        $fake = (new FakeAiClient())->queueRender('https://ok.example', ['url' => 'https://ok.example', 'title' => 't', 'html' => '<p>x</p>', 'text' => 'x', 'bytes' => 1, 'screenshot' => null, 'blocked' => 0]);
+
+        $this->assertSame('<p>x</p>', $fake->research()->render('https://ok.example')['html']);
+        $this->assertNull($fake->research()->render('https://nobody.example'));
+    }
+
     public function test_the_fake_research_surface_is_a_real_subclass(): void
     {
         $this->assertInstanceOf(AiResearch::class, (new FakeAiClient())->research());

@@ -28,6 +28,11 @@ class FakeAiResearch extends AiResearch
         return $this->fake->nextSearch($task, $query);
     }
 
+    public function render(string $urlOrHtml, bool $isHtml = false): ?array
+    {
+        return $this->fake->renderFor($isHtml ? 'html:'.md5($urlOrHtml) : $urlOrHtml);
+    }
+
     public function fetch(string $url, ?int $timeout = null, ?int $maxBytes = null, bool $withHtml = false): ?array
     {
         return $this->fake->pageFor($url);

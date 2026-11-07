@@ -1123,6 +1123,12 @@ class AiClient
              * down" and every caller's outage branch would fire for a single
              * bad link.
              */
+            // A page that cannot be RENDERED, a busy browser, or a box without one: each means "use a
+            // plain fetch", never "ai-service is down" (1.55.0).
+            'not_renderable', 'busy', 'render_unavailable' => new AllProvidersFailedException(
+                $decoded['message'] ?? 'That page could not be rendered.',
+                []
+            ),
             'not_fetchable' => new AllProvidersFailedException(
                 $decoded['message'] ?? 'That page could not be fetched.',
                 []

@@ -104,6 +104,23 @@ class AiResearch
      * One page: its title and readable text. With $withHtml (a product that REBUILDS the page, such
      * as a site builder) the page's markup comes too, as `html`; `text` is never markup either way.
      */
+    /**
+     * A page as a person sees it (1.55.0): rendered in ai-service's headless browser, its computed styles
+     * baked into `html`, plus a JPEG `screenshot` (base64). An address, or an artifact's own markup
+     * ($isHtml: its scripts may reach only the public CDNs). Null when it cannot be rendered, the
+     * browser is busy, or this box has none: all three mean "use fetch() instead". An outage throws.
+     *
+     * @return array{url: string, title: string, html: string, text: string, bytes: int, screenshot: ?string, blocked: int}|null
+     */
+    public function render(string $urlOrHtml, bool $isHtml = false): ?array
+    {
+        try {
+            return $this->client->postJson('api/v1/research/render', $isHtml ? ['html' => $urlOrHtml, 'allow' => 'cdn'] : ['url' => $urlOrHtml]);
+        } catch (AllProvidersFailedException) {
+            return null;
+        }
+    }
+
     public function fetch(string $url, ?int $timeout = null, ?int $maxBytes = null, bool $withHtml = false): ?array
     {
         try {

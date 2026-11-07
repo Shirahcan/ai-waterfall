@@ -619,6 +619,22 @@ class FakeAiClient extends AiClient
      *
      * @param  array<string, mixed>|null  $page
      */
+    /** @var array<string, ?array> rendered pages, by URL or `html:` + md5 of the markup */
+    private array $renders = [];
+
+    /** A rendered page for research()->render(); an unregistered one renders to null (use fetch). */
+    public function queueRender(string $urlOrHtml, ?array $page, bool $isHtml = false): static
+    {
+        $this->renders[$isHtml ? 'html:'.md5($urlOrHtml) : $urlOrHtml] = $page;
+
+        return $this;
+    }
+
+    public function renderFor(string $key): ?array
+    {
+        return $this->renders[$key] ?? null;
+    }
+
     public function queuePage(string $url, ?array $page): static
     {
         $this->pages[$url] = $page;
