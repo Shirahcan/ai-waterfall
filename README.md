@@ -597,6 +597,32 @@ indistinguishable from "a generous cap" from a product's side. Likewise `stopped
 product's own switch while `refusing` is what the generation path gets, which is also
 true under a global stop; collapse them and resuming one product appears to do nothing.
 
+## The assistant panel on spaces (1.57.0)
+
+One shared panel for every product (owner 2026-11-08). ai-service holds a **space** per person (or
+guest) per audience for the product's assistant, made on first use; conversations, memory ("What
+{assistant} knows about you"), the up-arrow ring, the conversation to reopen and suggested questions
+all hang off it. A product adopts it in four steps:
+
+1. **Name the assistant** (`AI_ASSISTANT=porter`, published with `ai:assistant-sync`).
+2. **Bind who the person is**: `Laravel\Spaces\SpaceOwner::for(Request): ?SpaceKey`
+   (`SpaceKey::user($ref, $audience)` or `SpaceKey::guest($token)`). Read the SESSION only; this is the
+   whole of person-level isolation. Bind `SpaceSettings` to your DB gate (fallback
+   `ai-client.spaces.enabled`).
+3. **Bind what a turn does**: `Laravel\Spaces\Turns\TurnRunner` (validate, opening stages, run, cancel,
+   failure sentence). Optionally bind `SpaceMessages` to keep your own message shape.
+4. **Mount the routes** in your authenticated group, and mount ai-ui's `AssistantSpacePanel` with
+   `createAssistantSpaceClient({ base, fetcher })`:
+
+```php
+Route::prefix('assistant')->group(fn () => \Shirahcan\AiClient\Laravel\Spaces\Routes\AssistantRoutes::mount('space'));
+```
+
+Routes (`assistant.space.*`): `chat/stream` + cancel, `threads` (list, search, rename/pin),
+`conversations/{id}` (read, erase), feedback, card-state, `active-conversation`, `input-history`,
+`memory`, `prompts`. Off = 404; ai-service down = 503; a refusal keeps the service's own sentence.
+Tests: `FakeAiClient::spaces()` is an in-memory `FakeAiSpaces` (`$suggested` sets the prompts).
+
 ## Site management: the AI console in one line (1.37.0)
 
 Every product's admin gets the same AI console (usage and trends, prompt templates, voice,
