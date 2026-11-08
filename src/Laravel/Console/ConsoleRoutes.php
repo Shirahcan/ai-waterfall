@@ -61,6 +61,10 @@ final class ConsoleRoutes
         ['POST',   'personas',                            'api/v1/personas',              false, 'author'],
         ['POST',   'personas/{id}/activate',              'api/v1/personas/{id}/activate', false, null],
         ['DELETE', 'personas/{id}',                       'api/v1/personas/{id}',         false, null],
+        // The assistant itself (1.56): name, look, voice key, surfaces; its identity rows are personas above.
+        ['GET',    'assistants',                          'api/v1/assistants',            false, null],
+        ['GET',    'assistants/{key}',                    'api/v1/assistants/{key}',      false, null],
+        ['PUT',    'assistants/{key}',                    'api/v1/assistants/{key}',      false, 'updated_by'],
 
         // Knowledge (read-only: the product's files are the authority) and feedback.
         ['GET',    'knowledge',                           'api/v1/knowledge/entries',     false, null],
