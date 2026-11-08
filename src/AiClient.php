@@ -1470,6 +1470,15 @@ class AiClient
     }
 
     /**
+     * Assistant spaces (1.57): one person's place with this product's assistant, holding their
+     * conversations, memory, input history and the panel's state. See `AiSpaces`.
+     */
+    public function spaces(): AiSpaces
+    {
+        return new AiSpaces($this);
+    }
+
+    /**
      * What an assistant remembers about a person (P19e). Encrypted, scoped to this product's
      * trust key, and erased with the person's conversations.
      */

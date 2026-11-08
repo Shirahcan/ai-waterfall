@@ -804,6 +804,18 @@ class FakeAiClient extends AiClient
         return $this->conversations;
     }
 
+    private ?FakeAiSpaces $spacesStore = null;
+
+    /** Assistant spaces (1.57), in memory; the outage switch reaches it like the transcript store. */
+    public function spaces(): FakeAiSpaces
+    {
+        if ($this->conversationsUnavailable) {
+            throw new AiUnavailableException('ai-service is unreachable: the fake was told to pretend so.');
+        }
+
+        return $this->spacesStore ??= new FakeAiSpaces();
+    }
+
     private ?FakeAiMemoryStore $memoryStore = null;
 
     /** The memory store, faked: one instance per fake client, shared by every call. */

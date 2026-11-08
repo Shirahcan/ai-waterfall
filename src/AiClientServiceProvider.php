@@ -78,6 +78,10 @@ class AiClientServiceProvider extends ServiceProvider
 
         // 1.51: live dictation. A product with DB-backed switches binds its own settings; this is the fallback.
         $this->app->bindIf(Laravel\Dictation\DictationSettings::class, Laravel\Dictation\ConfigDictationSettings::class);
+
+        // 1.57: assistant spaces. A product with audiences or guests binds its own SpaceOwner.
+        $this->app->bindIf(Laravel\Spaces\SpaceOwner::class, Laravel\Spaces\DefaultSpaceOwner::class);
+        $this->app->bindIf(Laravel\Spaces\SpaceSettings::class, Laravel\Spaces\ConfigSpaceSettings::class);
     }
 
     public function boot(): void
