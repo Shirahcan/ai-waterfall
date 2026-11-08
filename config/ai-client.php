@@ -93,6 +93,19 @@ return [
     | live in its database binds `DictationSettings` instead, so an admin flips the gate and changes the
     | minutes without a deploy. `product` prefixes the usage ledger's task (default: the app's name).
     */
+    /*
+    |--------------------------------------------------------------------------
+    | Assistant spaces (1.57)
+    |--------------------------------------------------------------------------
+    |
+    | The panel's data in ai-service, per person and audience (`AssistantRoutes::mount()`). This is the
+    | FALLBACK switch; a product with DB-backed gates binds `Laravel\Spaces\SpaceSettings` instead.
+    |
+    */
+    'spaces' => [
+        'enabled' => (bool) env('AI_SPACES_ENABLED', false),
+    ],
+
     'dictation' => [
         'enabled' => (bool) env('AI_DICTATION_ENABLED', false),
         'daily_minutes' => (int) env('AI_DICTATION_DAILY_MINUTES', 60),
