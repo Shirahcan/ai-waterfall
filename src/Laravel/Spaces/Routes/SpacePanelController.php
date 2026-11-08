@@ -21,9 +21,27 @@ final class SpacePanelController extends SpaceController
 
     public function active(Request $request): JsonResponse
     {
-        return $this->inSpace($request, fn (string $space) => [
-            'conversation_id' => $this->ai->spaces()->state($space)['active_conversation_id'],
-        ]);
+        return $this->inSpace($request, function (string $space) use ($request) {
+            $active = $this->ai->spaces()->state($space)['active_conversation_id'];
+
+            /*
+             * The first open after the panel moved onto spaces reopens what the person last had in the
+             * product's own panel (1.57.2). ai-service refuses a thread outside the space, and a refusal
+             * here only means "start fresh".
+             */
+            if ($active === null && app()->bound(\Shirahcan\AiClient\Laravel\Spaces\PreviousConversation::class)) {
+                $previous = app(\Shirahcan\AiClient\Laravel\Spaces\PreviousConversation::class)->for($request);
+                if (is_string($previous) && $previous !== '') {
+                    try {
+                        $active = $this->ai->spaces()->reopenNext($space, $previous)['active_conversation_id'];
+                    } catch (\Shirahcan\AiClient\Exceptions\AiRequestRefusedException) {
+                        $active = null;
+                    }
+                }
+            }
+
+            return ['conversation_id' => $active];
+        });
     }
 
     /** Remember (or, with null, forget) which conversation the panel reopens. */

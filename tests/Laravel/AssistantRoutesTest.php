@@ -170,6 +170,40 @@ class AssistantRoutesTest extends TestCase
         $me->getJson('/v1/assistant/space/input-history')->assertJsonPath('data.history', ['Second', 'First']);
     }
 
+    public function test_the_first_open_reopens_the_conversation_the_person_last_had_before_spaces(): void
+    {
+        $space = $this->spaceOf('u-1');
+        $mine = $this->store()->start($space)['conversation']['id'];
+        $theirs = $this->store()->start($this->spaceOf('u-2'))['conversation']['id'];
+
+        $previous = new class implements \Shirahcan\AiClient\Laravel\Spaces\PreviousConversation
+        {
+            public ?string $answer = null;
+
+            public int $asked = 0;
+
+            public function for(\Illuminate\Http\Request $request): ?string
+            {
+                $this->asked++;
+
+                return $this->answer;
+            }
+        };
+        $this->app->instance(\Shirahcan\AiClient\Laravel\Spaces\PreviousConversation::class, $previous);
+
+        // Another person's thread is refused by the space and simply means "start fresh".
+        $previous->answer = $theirs;
+        $this->as('u-1')->getJson('/v1/assistant/space/active-conversation')->assertOk()->assertJsonPath('data.conversation_id', null);
+
+        $previous->answer = $mine;
+        $this->as('u-1')->getJson('/v1/assistant/space/active-conversation')->assertJsonPath('data.conversation_id', $mine);
+
+        // Kept in the space: not asked again.
+        $asked = $previous->asked;
+        $this->as('u-1')->getJson('/v1/assistant/space/active-conversation')->assertJsonPath('data.conversation_id', $mine);
+        $this->assertSame($asked, $previous->asked);
+    }
+
     public function test_an_outage_says_so_and_a_refusal_keeps_the_services_sentence(): void
     {
         $space = $this->spaceOf('u-1');
