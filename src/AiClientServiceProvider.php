@@ -82,6 +82,7 @@ class AiClientServiceProvider extends ServiceProvider
         // 1.57: assistant spaces. A product with audiences or guests binds its own SpaceOwner.
         $this->app->bindIf(Laravel\Spaces\SpaceOwner::class, Laravel\Spaces\DefaultSpaceOwner::class);
         $this->app->bindIf(Laravel\Spaces\SpaceSettings::class, Laravel\Spaces\ConfigSpaceSettings::class);
+        $this->app->bindIf(Laravel\Spaces\SpaceMessages::class, Laravel\Spaces\NeutralSpaceMessages::class);
     }
 
     public function boot(): void

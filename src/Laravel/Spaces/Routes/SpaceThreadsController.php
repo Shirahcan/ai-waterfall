@@ -4,6 +4,7 @@ namespace Shirahcan\AiClient\Laravel\Spaces\Routes;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Shirahcan\AiClient\Laravel\Spaces\SpaceMessages;
 
 /**
  * The person's conversations in their space (1.57): the list that scales (paged, pins first, search,
@@ -107,19 +108,13 @@ final class SpaceThreadsController extends SpaceController
             'before' => ['nullable', 'uuid'],
         ]);
 
-        return $this->inSpace($request, function (string $space) use ($id, $data) {
+        return $this->inSpace($request, function (string $space) use ($request, $id, $data) {
             $read = $this->ai->spaces()->conversation($space, $id, array_filter($data, fn ($v) => $v !== null));
 
             return [
                 'conversation' => $this->row($read['conversation']),
-                'messages' => array_map(fn (array $t) => [
-                    'id' => (string) $t['id'],
-                    'role' => (string) $t['role'],
-                    'content' => $t['body'] ?? null,
-                    'structured' => $t['structured'] ?? null,
-                    'state' => $t['state'] ?? null,
-                    'created_at' => $t['created_at'] ?? null,
-                ], $read['turns'] ?? []),
+                // The product's own message shape when it binds SpaceMessages (Porter does); neutral otherwise.
+                'messages' => app(SpaceMessages::class)->present($request, $read['conversation'], $read['turns'] ?? []),
                 'has_more' => (bool) ($read['has_more'] ?? false),
                 'next_before' => $read['next_before'] ?? null,
             ];

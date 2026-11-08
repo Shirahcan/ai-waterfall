@@ -114,6 +114,23 @@ class AssistantRoutesTest extends TestCase
         $this->assertSame(['cards' => []], $read['messages'][1]['structured']);
     }
 
+    public function test_a_product_that_binds_its_message_shape_gets_it(): void
+    {
+        $this->app->bind(\Shirahcan\AiClient\Laravel\Spaces\SpaceMessages::class, fn () => new class implements \Shirahcan\AiClient\Laravel\Spaces\SpaceMessages
+        {
+            public function present(\Illuminate\Http\Request $request, array $conversation, array $turns): array
+            {
+                return array_map(fn ($t) => ['kind' => 'porter', 'ai_turn_id' => $t['id'], 'content' => $t['body']], $turns);
+            }
+        });
+        $space = $this->spaceOf('u-1');
+        $id = $this->store()->start($space)['conversation']['id'];
+        $this->store()->append($space, $id, ['role' => 'assistant', 'body' => 'Hello']);
+
+        $this->as('u-1')->getJson("/v1/assistant/space/conversations/{$id}")->assertOk()
+            ->assertJsonPath('data.messages.0.kind', 'porter')->assertJsonPath('data.messages.0.content', 'Hello');
+    }
+
     public function test_memory_reads_as_words_and_a_correction_is_the_persons_own(): void
     {
         $space = $this->spaceOf('u-1');
