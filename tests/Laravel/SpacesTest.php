@@ -123,7 +123,7 @@ class SpacesTest extends TestCase
         $this->assertNotNull($first);
         $this->assertSame($first, $second);
         $this->assertCount(1, array_filter($fake->spaces()->calls, fn ($c) => $c[0] === 'resolve'));
-        $this->assertSame(['porter', 'user', 'u-7', null], $fake->spaces()->calls[0][1]);
+        $this->assertSame(['porter', 'user', 'u-7', null, null], $fake->spaces()->calls[0][1]);
     }
 
     public function test_no_person_means_no_space_and_no_call(): void

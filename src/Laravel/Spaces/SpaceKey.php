@@ -17,16 +17,22 @@ final class SpaceKey
         public readonly string $kind,
         public readonly string $ref,
         public readonly ?string $audience,
+        /** Where the person's OWN memory is, when the product files it apart from their threads (1.57.1). */
+        public readonly ?string $memoryRef = null,
     ) {
         if (trim($ref) === '') {
             throw new \InvalidArgumentException('A space owner needs a reference.');
         }
     }
 
-    /** A signed-in person: the product's reference as its transcripts already use it (Porter: the user id; Mira: `user:<id>`). */
-    public static function user(string $ref, ?string $audience): self
+    /**
+     * A signed-in person: the product's reference as its transcripts already use it (Porter: the user id;
+     * Mira: `user:<id>`). `$memoryRef` when its memory is filed under another (Porter: `user:<id>`), so the
+     * space mirrors and levels "What {assistant} knows about you" against the right rows.
+     */
+    public static function user(string $ref, ?string $audience, ?string $memoryRef = null): self
     {
-        return new self(self::USER, $ref, $audience);
+        return new self(self::USER, $ref, $audience, $memoryRef);
     }
 
     /**

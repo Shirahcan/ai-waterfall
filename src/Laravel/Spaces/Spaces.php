@@ -32,7 +32,7 @@ final class Spaces
         $key = $this->owner->for($request);
         $space = null;
         if ($key !== null) {
-            $space = (string) ($this->ai->spaces()->resolve($this->assistant(), $key->kind, $key->ref, $key->audience)['id'] ?? '');
+            $space = (string) ($this->ai->spaces()->resolve($this->assistant(), $key->kind, $key->ref, $key->audience, $key->memoryRef)['id'] ?? '');
             $space = $space === '' ? null : $space;
         }
 

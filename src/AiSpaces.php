@@ -20,14 +20,20 @@ class AiSpaces
     public function __construct(private AiClient $client) {}
 
     /** @return array{id: string, assistant: string, owner_kind: string, audience: ?string, created: bool} */
-    public function resolve(string $assistant, string $ownerKind, string $ownerRef, ?string $audience): array
+    public function resolve(string $assistant, string $ownerKind, string $ownerRef, ?string $audience, ?string $memoryOwnerRef = null): array
     {
-        return (array) ($this->client->putJson('api/v1/spaces/resolve', [
+        $body = [
             'assistant'  => $assistant,
             'owner_kind' => $ownerKind,
             'owner_ref'  => $ownerRef,
             'audience'   => $audience,
-        ])['space'] ?? []);
+        ];
+        // Where the person's own memory is, when the product files it apart from their threads (1.57.1).
+        if ($memoryOwnerRef !== null) {
+            $body['memory_owner_ref'] = $memoryOwnerRef;
+        }
+
+        return (array) ($this->client->putJson('api/v1/spaces/resolve', $body)['space'] ?? []);
     }
 
     /**

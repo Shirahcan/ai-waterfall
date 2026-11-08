@@ -37,7 +37,7 @@ class FakeAiSpaces extends AiSpaces
         // No HTTP client: every method below answers from memory.
     }
 
-    public function resolve(string $assistant, string $ownerKind, string $ownerRef, ?string $audience): array
+    public function resolve(string $assistant, string $ownerKind, string $ownerRef, ?string $audience, ?string $memoryOwnerRef = null): array
     {
         $this->calls[] = ['resolve', func_get_args()];
         $key = implode('|', [$assistant, $ownerKind, $ownerRef, (string) $audience]);
