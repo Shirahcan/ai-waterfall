@@ -66,6 +66,22 @@ return [
     ],
 
     /*
+    | The product's assistant (1.56): ONE base assistant for every surface. `key` names it
+    | (`AI_ASSISTANT=porter`); every call that names a surface (`$ai->surface('site_builder', ...)`) is
+    | framed by ai-service with the assistant's identity, the product's knowledge and the rules true
+    | everywhere. The names below are used ONCE, to create the record (`ai:assistant-sync`); after that
+    | the record in ai-service is the authority and the console edits it. `surfaces` lists the
+    | product's `Assistant\Surface` classes.
+    */
+    'assistant' => [
+        'key'               => env('AI_ASSISTANT'),
+        'display_name'      => env('AI_ASSISTANT_NAME'),
+        'product_name'      => env('AI_ASSISTANT_PRODUCT_NAME'),
+        'voice_persona_key' => env('AI_ASSISTANT_VOICE'),
+        'surfaces'          => [],
+    ],
+
+    /*
     | The assistant eval set `ai:eval` runs (1.31). Null = `tests/Eval/assistant_eval.json`.
     */
     'eval' => [

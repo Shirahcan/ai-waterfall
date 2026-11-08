@@ -55,12 +55,13 @@ class AiClientServiceProvider extends ServiceProvider
                 );
             }
 
-            return new AiClient(
+            // The product's assistant, named once (1.56): every surface call speaks as it.
+            return (new AiClient(
                 baseUrl: (string) config('ai-client.base_url'),
                 trustKey: $key,
                 timeout: (int) config('ai-client.timeout', 60),
                 adminKey: $adminKey,
-            );
+            ))->forAssistant(config('ai-client.assistant.key'));
         });
 
         /*
@@ -100,7 +101,7 @@ class AiClientServiceProvider extends ServiceProvider
         }
 
         if ($this->app->runningInConsole()) {
-            $this->commands([Laravel\Tools\RegisterToolHostCommand::class, Laravel\Tasks\SyncTasksCommand::class, Laravel\Eval\EvalCommand::class, Laravel\Knowledge\KnowledgeSyncCommand::class, Laravel\DoctorCommand::class]);
+            $this->commands([Laravel\Tools\RegisterToolHostCommand::class, Laravel\Tasks\SyncTasksCommand::class, Laravel\Assistant\SyncAssistantCommand::class, Laravel\Eval\EvalCommand::class, Laravel\Knowledge\KnowledgeSyncCommand::class, Laravel\DoctorCommand::class]);
         }
 
         $this->publishes([

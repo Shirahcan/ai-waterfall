@@ -295,6 +295,7 @@ class AiClient
             'persona'              => $this->persona,
             'audience'             => $this->personaAudience,
             'per_provider_timeout' => $this->perProviderTimeout,
+            'assistant'            => $this->assistantBlock,
         ], fn ($v) => $v !== null && $v !== []);
 
         yield from $this->openStream('api/v1/generate/stream', $body, $onOpen);
@@ -324,6 +325,7 @@ class AiClient
             'audience'             => $this->personaAudience,
             'per_provider_timeout' => $this->perProviderTimeout,
             'route_key'            => $this->routeKey,
+            'assistant'            => $this->assistantBlock,
         ], fn ($v) => $v !== null && $v !== []);
 
         yield from $this->openStream('api/v1/tasks/'.rawurlencode($key).'/run/stream', $body, $onOpen);
@@ -1049,6 +1051,7 @@ class AiClient
         $body['per_provider_timeout'] = $this->perProviderTimeout;
         $body['preferred_models']     = $this->preferredModels;
         $body['route_key']            = $this->routeKey;
+        $body['assistant']            ??= $this->assistantBlock;
 
         $body = array_filter($body, fn ($v) => $v !== null && $v !== []);
 
@@ -1285,6 +1288,106 @@ class AiClient
 
     private ?string $persona = null;
     private ?string $personaAudience = null;
+
+    /*
+     * ⚠ THE BASE ASSISTANT (1.56, owner 2026-11-08): "that should be the base Porter everywhere
+     * (persona + voice + full knowledge of the platform + etc) so Porter doesn't sound different in
+     * places". A product NAMES its assistant once (`AI_ASSISTANT=porter`); a call names the SURFACE it
+     * runs on, and ai-service composes the assistant's identity, who is asking, the product's
+     * knowledge and the rules true everywhere ahead of the surface's own template. The kit ships no
+     * product's words: they are the assistant's record and persona rows in the service.
+     */
+    private ?string $assistantKey = null;
+
+    /** @var array{key?: string, surface: string, audience?: string, mode: string, knowledge_query?: string}|null */
+    private ?array $assistantBlock = null;
+
+    /** This client speaking as the named assistant (a clone, like every per-call setting). */
+    public function forAssistant(?string $key): static
+    {
+        $clone = clone $this;
+        $clone->assistantKey = $key !== null && trim($key) !== '' ? trim($key) : null;
+
+        return $clone;
+    }
+
+    public function assistantKey(): ?string
+    {
+        return $this->assistantKey;
+    }
+
+    /**
+     * The next calls run on this surface as the base assistant: a clone carrying the `assistant` block
+     * ai-service frames the call from. `$knowledgeQuery` is the person's ask, so the product's knowledge
+     * for it is found and given to a one-shot task. A `silent` surface sends no block (nothing added).
+     *
+     * @param  string|Assistant\Surface  $surface  a registered surface, or its key
+     * @param  string|null  $mode  overrides the surface's own mode; default `grounded` for a bare key
+     */
+    public function surface(string|Assistant\Surface $surface, ?string $audience = null, ?string $knowledgeQuery = null, ?string $mode = null): static
+    {
+        $key = $surface instanceof Assistant\Surface ? $surface->key() : $surface;
+        $mode ??= $surface instanceof Assistant\Surface ? $surface->mode() : Assistant\Surface::GROUNDED;
+        if (! in_array($mode, [Assistant\Surface::CONVERSATION, Assistant\Surface::GROUNDED, Assistant\Surface::SILENT], true)) {
+            throw new \InvalidArgumentException("Unknown assistant mode [{$mode}].");
+        }
+
+        $clone = clone $this;
+        $clone->assistantBlock = $mode === Assistant\Surface::SILENT ? null : array_filter([
+            'key'             => $this->assistantKey,
+            'surface'         => $key,
+            'audience'        => $audience !== null && $audience !== '' ? $audience : null,
+            'mode'            => $mode,
+            'knowledge_query' => $knowledgeQuery !== null && trim($knowledgeQuery) !== '' ? mb_substr(trim($knowledgeQuery), 0, 2000) : null,
+        ], static fn ($v) => $v !== null);
+
+        return $clone;
+    }
+
+    /** The `assistant` block the next call sends, or null (no frame: the call is as before). */
+    public function assistantBlock(): ?array
+    {
+        return $this->assistantBlock;
+    }
+
+    /**
+     * The assistant's complete identity from the service (name, product name, look, voice key,
+     * identity per audience, surfaces), or null when the product has not published it.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function assistantRecord(?string $key = null): ?array
+    {
+        $key ??= $this->assistantKey;
+        if ($key === null) {
+            return null;
+        }
+
+        try {
+            $body = $this->getJson('api/v1/assistants/'.rawurlencode($key));
+        } catch (Exceptions\AiRequestRefusedException $e) {
+            if ($e->status === 404) {
+                return null;
+            }
+            throw $e;
+        }
+
+        return is_array($body['assistant'] ?? null) ? $body['assistant'] : null;
+    }
+
+    /**
+     * Create the assistant, or change the fields sent (`display_name`, `product_name`,
+     * `voice_persona_key`, `look` {avatar_url, greetings}, `surfaces`, `status`).
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array<string, mixed>
+     */
+    public function publishAssistant(string $key, array $fields): array
+    {
+        $body = $this->putJson('api/v1/assistants/'.rawurlencode($key), $fields);
+
+        return (array) ($body['assistant'] ?? []);
+    }
 
     /** Manage this product stored voices. */
     public function personas(): AiPersonas

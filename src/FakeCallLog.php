@@ -54,6 +54,17 @@ class FakeCallLog
     public ?array $persona = null;
 
     /**
+     * The base-assistant block (surface, audience, mode, knowledge query) the last call ran on, or
+     * null when it named no surface (1.56).
+     *
+     * @var array<string, string>|null
+     */
+    public ?array $assistant = null;
+
+    /** @var array<string, array<string, mixed>> the assistant records the fake service holds, by key */
+    public array $assistants = [];
+
+    /**
      * The (provider, model) pairs the last call asked to be tried first, or null.
      *
      * ⚠ RECORDED BECAUSE THE REAL FAILURE WAS A FIELD THAT NEVER CROSSED THE

@@ -212,7 +212,8 @@ class FakeAiClient extends AiClient
         ?string $field = null,
         ?callable $onOpen = null,
     ): iterable {
-        $this->log->calls[] = ['task' => $task, 'mode' => 'stream', 'payload' => $prompt];
+        $this->log->calls[] = ['task' => $task, 'mode' => 'stream', 'payload' => $prompt] + ($this->assistantBlock() !== null ? ['assistant' => $this->assistantBlock()] : []);
+        $this->log->assistant = $this->assistantBlock();
 
         $events = $this->streamEvents;
         $this->streamEvents = [];
@@ -237,7 +238,8 @@ class FakeAiClient extends AiClient
      */
     public function runTaskStream(string $key, array $vars, ?string $field = null, ?callable $onOpen = null): iterable
     {
-        $this->log->calls[] = ['task' => $key, 'mode' => 'task_stream', 'payload' => ['vars' => $vars, 'field' => $field]];
+        $this->log->calls[] = ['task' => $key, 'mode' => 'task_stream', 'payload' => ['vars' => $vars, 'field' => $field]] + ($this->assistantBlock() !== null ? ['assistant' => $this->assistantBlock()] : []);
+        $this->log->assistant = $this->assistantBlock();
 
         $events = $this->streamEvents;
         $this->streamEvents = [];
@@ -861,6 +863,27 @@ class FakeAiClient extends AiClient
         return $this->admin ??= new FakeAiAdmin();
     }
 
+    /** The base-assistant block the LAST call ran on (surface, audience, mode, knowledge query), or null. */
+    public function assistantCall(): ?array
+    {
+        return $this->log->assistant;
+    }
+
+    /** An assistant record as the fake service holds it (1.56); null when none was published. */
+    public function assistantRecord(?string $key = null): ?array
+    {
+        $key ??= $this->assistantKey();
+
+        return $key === null ? null : ($this->log->assistants[$key] ?? null);
+    }
+
+    public function publishAssistant(string $key, array $fields): array
+    {
+        $this->log->assistants[$key] = array_merge($this->log->assistants[$key] ?? ['key' => $key], $fields);
+
+        return $this->log->assistants[$key];
+    }
+
     /** Which voice the LAST call asked to speak in, or null. */
     public function persona(): ?array
     {
@@ -968,7 +991,8 @@ class FakeAiClient extends AiClient
 
     private function next(string $task, string $mode, mixed $payload): AiResult
     {
-        $this->log->calls[] = ['task' => $task, 'mode' => $mode, 'payload' => $payload];
+        $this->log->calls[] = ['task' => $task, 'mode' => $mode, 'payload' => $payload] + ($this->assistantBlock() !== null ? ['assistant' => $this->assistantBlock()] : []);
+        $this->log->assistant = $this->assistantBlock();
 
         if ($this->queue === []) {
             /*
