@@ -162,6 +162,22 @@ class AiSpaces
     }
 
     /**
+     * Suggested questions for the panel, from the product's knowledge for the space's audience, the
+     * screen at `$route` first (ai-service picks them; owner 2026-11-08).
+     *
+     * @return list<string>
+     */
+    public function prompts(string $space, ?string $route = null, int $limit = 4): array
+    {
+        $query = ['limit' => $limit];
+        if ($route !== null && $route !== '') {
+            $query['route'] = $route;
+        }
+
+        return array_values(array_map('strval', (array) ($this->client->getJson($this->path($space, 'prompts'), $query)['prompts'] ?? [])));
+    }
+
+    /**
      * The memory reference a chat turn names so the assistant's remember/recall use this space's
      * memory (ai-service S1b-ii). Mirrors `AiSpace::memoryRef()` there.
      */

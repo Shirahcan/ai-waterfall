@@ -27,6 +27,9 @@ class FakeAiSpaces extends AiSpaces
     /** @var list<array{0: string, 1: array<int, mixed>}> */
     public array $calls = [];
 
+    /** What `prompts()` answers; a test sets it. */
+    public array $suggested = [];
+
     private int $clock = 0;
 
     public function __construct()
@@ -218,6 +221,14 @@ class FakeAiSpaces extends AiSpaces
         }
 
         return array_slice(array_values(array_unique(array_reverse($asked))), 0, $limit);
+    }
+
+    public function prompts(string $space, ?string $route = null, int $limit = 4): array
+    {
+        $this->calls[] = ['prompts', func_get_args()];
+        $this->spaceOrFail($space);
+
+        return array_slice(array_values($this->suggested), 0, $limit);
     }
 
     public function state(string $space): array

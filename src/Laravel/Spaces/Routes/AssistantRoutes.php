@@ -49,6 +49,7 @@ final class AssistantRoutes
         Route::get($p.'active-conversation', [SpacePanelController::class, 'active'])->middleware('throttle:60,1')->name('assistant.space.active');
         Route::put($p.'active-conversation', [SpacePanelController::class, 'reopen'])->middleware('throttle:60,1')->name('assistant.space.reopen');
         Route::get($p.'input-history', [SpacePanelController::class, 'history'])->middleware('throttle:60,1')->name('assistant.space.history');
+        Route::get($p.'prompts', [SpacePanelController::class, 'prompts'])->middleware('throttle:60,1')->name('assistant.space.prompts');
 
         Route::get($p.'memory', [SpaceMemoryController::class, 'index'])->middleware('throttle:60,1')->name('assistant.space.memory.index');
         Route::delete($p.'memory', [SpaceMemoryController::class, 'clear'])->middleware('throttle:10,1')->name('assistant.space.memory.clear');

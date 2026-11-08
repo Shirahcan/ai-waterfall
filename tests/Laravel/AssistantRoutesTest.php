@@ -131,6 +131,17 @@ class AssistantRoutesTest extends TestCase
             ->assertJsonPath('data.messages.0.kind', 'porter')->assertJsonPath('data.messages.0.content', 'Hello');
     }
 
+    public function test_suggested_questions_come_from_the_service_for_the_screen_and_a_failure_is_an_empty_list(): void
+    {
+        $this->spaceOf('u-1');
+        $this->store()->suggested = ['Which documents are still outstanding?', 'How do I invite a client?'];
+
+        $this->as('u-1')->getJson('/v1/assistant/space/prompts?route=/consultant/cases&limit=1')->assertOk()
+            ->assertJsonPath('data.prompts', ['Which documents are still outstanding?']);
+        $call = array_values(array_filter($this->store()->calls, fn ($c) => $c[0] === 'prompts'))[0];
+        $this->assertSame('/consultant/cases', $call[1][1]);
+    }
+
     public function test_memory_reads_as_words_and_a_correction_is_the_persons_own(): void
     {
         $space = $this->spaceOf('u-1');

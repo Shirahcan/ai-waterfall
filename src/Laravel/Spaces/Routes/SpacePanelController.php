@@ -36,6 +36,28 @@ final class SpacePanelController extends SpaceController
         ]);
     }
 
+    /**
+     * Suggested questions for the screen the person is on, from the product's knowledge for their role.
+     * A failure is an empty list: suggestions are a convenience, never worth an error at someone.
+     */
+    public function prompts(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'route' => ['nullable', 'string', 'max:255'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:8'],
+        ]);
+
+        return $this->inSpace($request, function (string $space) use ($data) {
+            try {
+                return ['prompts' => $this->ai->spaces()->prompts($space, $data['route'] ?? null, (int) ($data['limit'] ?? 4))];
+            } catch (\Throwable $e) {
+                report($e);
+
+                return ['prompts' => []];
+            }
+        });
+    }
+
     /** The person's own questions in this space, newest first, once each. */
     public function history(Request $request): JsonResponse
     {
