@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Route;
  *
  * Routes (names `assistant.space.*`): threads list/search/rename-pin, a conversation read/erase, the
  * conversation to reopen, the up-arrow ring, memory list/correct/forget/forget-all, a vote, and a
- * confirm card's outcome. The chat turn itself (stream, cancel) is added by S2c.
+ * confirm card's outcome, and the chat turn itself (stream, cancel) through the product's `TurnRunner`.
  */
 final class AssistantRoutes
 {
@@ -26,6 +26,11 @@ final class AssistantRoutes
     {
         $p = trim($prefix, '/');
         $p = $p === '' ? '' : $p.'/';
+
+        // The turn (S2c): the product binds a TurnRunner; without one these answer 404.
+        Route::post($p.'chat/stream', [SpaceTurnController::class, 'stream'])->middleware('throttle:30,1')->name('assistant.space.stream');
+        Route::delete($p.'chat/stream/{turnId}', [SpaceTurnController::class, 'cancel'])->where('turnId', '[A-Za-z0-9-]{1,64}')
+            ->middleware('throttle:60,1')->name('assistant.space.cancel');
 
         Route::get($p.'threads', [SpaceThreadsController::class, 'index'])->middleware('throttle:60,1')->name('assistant.space.threads.index');
         Route::get($p.'threads/search', [SpaceThreadsController::class, 'search'])->middleware('throttle:30,1')->name('assistant.space.threads.search');
