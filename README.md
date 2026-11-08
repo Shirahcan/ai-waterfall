@@ -597,6 +597,25 @@ indistinguishable from "a generous cap" from a product's side. Likewise `stopped
 product's own switch while `refusing` is what the generation path gets, which is also
 true under a global stop; collapse them and resuming one product appears to do nothing.
 
+## A console for a studio surface (1.58.0)
+
+A Claude Code style session on ONE subject (a page, a component, a template): the person's asks, the
+assistant's steps, thinking, replies and outcomes, kept in ai-service as conversations on the `terminal`
+channel (never listed in the chat panel), with `/clear`, `/compact`, `/context`, `/resume`, `/rewind` and a
+shared brief. The UI is `@shirahcan/ai-ui/terminal` (`AssistantTerminal`).
+
+1. Bind what the console works on: `$this->app->bind(TerminalSubject::class, MySubject::class);`
+   (`ref()` returns null for anything the person may not edit, so every route answers 404).
+2. Mount the routes in the authenticated group: `TerminalRoutes::mount('console');`.
+3. In the product's own ask route: `TerminalSessions::appendAsk()` before the work, build the prompt with
+   `SessionWindow::build()` (brief, summary, nearby lines, the last pairs verbatim with replies, steps and
+   outcomes), run `SessionCompactor::compact()` first when `SessionWindow::needsCompaction()`, and record
+   the answer with `TerminalSessions::appendAnswer()` (failures too).
+4. Thinking mode: `runTaskStream(..., reasoning: true)` streams the model's reasoning as `reasoning`
+   events (`AiStreamEvent::reasoning()`); without it a stream is exactly as before.
+
+`/compact` runs ai-service's shared prompt `shared.terminal.compact`; no product template is needed.
+
 ## The assistant panel on spaces (1.57.0)
 
 One shared panel for every product (owner 2026-11-08). ai-service holds a **space** per person (or
