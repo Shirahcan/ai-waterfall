@@ -27,6 +27,11 @@ final class TerminalSessions
 
     public const STEP_TEXT_MAX = 200;
 
+    /** A step's detail: one line, except the assistant's own thinking (a `think` step), a short paragraph. */
+    public const STEP_DETAIL_MAX = 200;
+
+    public const THINKING_MAX = 800;
+
     public const BRIEF_KEY = 'terminal.brief';
 
     public const BRIEF_MAX = 4000;
@@ -222,7 +227,9 @@ final class TerminalSessions
                 'kind' => (string) ($step['kind'] ?? 'step'),
                 'text' => self::clip($text, self::STEP_TEXT_MAX),
                 'ms' => isset($step['ms']) ? max(0, (int) $step['ms']) : null,
-                'detail' => isset($step['detail']) && trim((string) $step['detail']) !== '' ? self::clip((string) $step['detail'], self::STEP_TEXT_MAX) : null,
+                'detail' => isset($step['detail']) && trim((string) $step['detail']) !== ''
+                    ? self::clip((string) $step['detail'], ($step['kind'] ?? '') === 'think' ? self::THINKING_MAX : self::STEP_DETAIL_MAX)
+                    : null,
             ];
         }
 
