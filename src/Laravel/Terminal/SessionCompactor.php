@@ -16,7 +16,8 @@ use Shirahcan\AiClient\AiClient;
  */
 final class SessionCompactor
 {
-    public const TASK = 'terminal.compact';
+    /** ai-service's SHARED prompt (`resources/ai-tasks/terminal`), published on every ai-service deploy. */
+    public const TASK = 'shared.terminal.compact';
 
     /** Folded turn ids kept with the summary: the most a session ever reads (`TurnsMax`). */
     private const FOLDED_MAX = TerminalSessions::TURNS_MAX;

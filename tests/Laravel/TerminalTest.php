@@ -9,7 +9,6 @@ use Shirahcan\AiClient\AiClient;
 use Shirahcan\AiClient\AiClientServiceProvider;
 use Shirahcan\AiClient\FakeAiClient;
 use Shirahcan\AiClient\FakeAiSpaces;
-use Shirahcan\AiClient\Laravel\Tasks\SyncTasksCommand;
 use Shirahcan\AiClient\Laravel\Terminal\SessionCompactor;
 use Shirahcan\AiClient\Laravel\Terminal\SessionWindow;
 use Shirahcan\AiClient\Laravel\Terminal\TerminalRoutes;
@@ -22,7 +21,7 @@ use Shirahcan\AiClient\Laravel\Terminal\TerminalSubject;
  * ⚠ WHAT THIS GUARDS: a subject the product refuses is a 404 everywhere; sessions are one subject's
  * and never the chat panel's; the window carries replies, steps and outcomes (not just asks) and
  * leaves rewound and folded turns out; compaction folds without deleting; the brief belongs to the
- * subject; and the kit's own template is synced with the product's.
+ * subject; and compaction runs ai-service's shared prompt.
  */
 class TerminalTest extends TestCase
 {
@@ -207,15 +206,9 @@ class TerminalTest extends TestCase
         $this->as('u-1')->putJson('/v1/admin/console/site_page/p1/brief', ['text' => ''])->assertOk()->assertJsonPath('data.brief', null);
     }
 
-    public function test_the_kits_own_template_is_synced_with_the_products(): void
+    public function test_compaction_runs_ai_services_shared_prompt(): void
     {
-        $this->assertFileExists(SyncTasksCommand::kitPath().'/terminal/terminal.compact.md');
-
-        $empty = sys_get_temp_dir().'/ai-tasks-'.uniqid();
-        mkdir($empty);
-        $this->artisan('ai:tasks-sync', ['--path' => $empty, '--dry-run' => true])
-            ->expectsOutputToContain('terminal.compact')
-            ->assertSuccessful();
-        rmdir($empty);
+        // Shared prompts publish with ai-service itself, so no product has to carry a copy.
+        $this->assertStringStartsWith('shared.', SessionCompactor::TASK);
     }
 }

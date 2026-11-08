@@ -314,11 +314,13 @@ class AiClient
      *
      * @throws AiUnavailableException When the service is unreachable or refuses the run.
      */
-    public function runTaskStream(string $key, array $vars, ?string $field = null, ?callable $onOpen = null): iterable
+    public function runTaskStream(string $key, array $vars, ?string $field = null, ?callable $onOpen = null, bool $reasoning = false): iterable
     {
         $body = array_filter([
             'vars'                 => $vars === [] ? new \stdClass() : $vars,
             'field'                => $field,
+            // Thinking mode (1.58.0): the model's reasoning streams as `reasoning` events before its answer.
+            'reasoning'            => $reasoning ? true : null,
             'budget_seconds'       => $this->budgetSeconds,
             'correlation'          => $this->correlation,
             'persona'              => $this->persona,

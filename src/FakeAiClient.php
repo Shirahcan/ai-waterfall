@@ -236,9 +236,9 @@ class FakeAiClient extends AiClient
      *
      * @return iterable<AiStreamEvent>
      */
-    public function runTaskStream(string $key, array $vars, ?string $field = null, ?callable $onOpen = null): iterable
+    public function runTaskStream(string $key, array $vars, ?string $field = null, ?callable $onOpen = null, bool $reasoning = false): iterable
     {
-        $this->log->calls[] = ['task' => $key, 'mode' => 'task_stream', 'payload' => ['vars' => $vars, 'field' => $field]] + ($this->assistantBlock() !== null ? ['assistant' => $this->assistantBlock()] : []);
+        $this->log->calls[] = ['task' => $key, 'mode' => 'task_stream', 'payload' => ['vars' => $vars, 'field' => $field] + ($reasoning ? ['reasoning' => true] : [])] + ($this->assistantBlock() !== null ? ['assistant' => $this->assistantBlock()] : []);
         $this->log->assistant = $this->assistantBlock();
 
         $events = $this->streamEvents;

@@ -49,6 +49,9 @@ final class AiStreamEvent
     /** Terminal, chat turns only: the turn is complete (`text`, `cards`, `usage`). */
     public const FINAL = 'final';
 
+    /** Thinking mode only (1.58.0): the model's reasoning so far (`text`), before and beside its answer. */
+    public const REASONING = 'reasoning';
+
     /**
      * @param  array<string, mixed>  $data
      */
@@ -74,6 +77,14 @@ final class AiStreamEvent
      * The full text of a finished answer is on the `done` event as
      * `data['text']`, deliberately reachable but never by accident.
      */
+    /** The reasoning a `reasoning` event carries; empty for every other event. */
+    public function reasoning(): string
+    {
+        $text = $this->type === self::REASONING ? ($this->data['text'] ?? '') : '';
+
+        return is_string($text) ? $text : '';
+    }
+
     public function text(): string
     {
         if ($this->type !== self::TOKEN) {

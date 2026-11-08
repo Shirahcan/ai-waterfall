@@ -269,6 +269,28 @@ class StreamTest extends TestCase
         $this->assertSame(AiStreamEvent::DONE, end($events)->type);
     }
 
+    /** Thinking mode (1.58.0): asked for, the run says so, and its reasoning arrives as its own events. */
+    public function test_a_task_run_in_thinking_mode_asks_for_reasoning_and_reads_it(): void
+    {
+        $history = [];
+        $stack = HandlerStack::create(new MockHandler([$this->sse(
+            $this->frame('open', ['stream_id' => 'run-2']),
+            $this->frame('reasoning', ['text' => 'They want it darker; only the band changes.']),
+            $this->frame('token', ['text' => '<box tone=dark/>']),
+            $this->frame('done', ['provider' => 'claude', 'model' => 'haiku']),
+        )]));
+        $stack->push(\GuzzleHttp\Middleware::history($history));
+        $client = new AiClient('http://127.0.0.1:8007', 'test-key', 60, new Guzzle(['handler' => $stack, 'base_uri' => 'http://127.0.0.1:8007/']));
+
+        $events = $this->drain($client->runTaskStream('sites.pml.edit', ['payload' => 'Darker'], reasoning: true));
+
+        $this->assertTrue(json_decode((string) $history[0]['request']->getBody(), true)['reasoning']);
+        $this->assertSame(AiStreamEvent::REASONING, $events[1]->type);
+        $this->assertSame('They want it darker; only the band changes.', $events[1]->reasoning());
+        $this->assertSame('', $events[1]->text(), 'reasoning is never mistaken for the answer');
+        $this->assertSame('', $events[2]->reasoning());
+    }
+
     public function test_a_refused_task_stream_maps_to_the_familiar_exception(): void
     {
         $client = $this->client(new Response(422, [], json_encode(['error' => 'missing_vars', 'message' => 'Template needs: payload.'])));
