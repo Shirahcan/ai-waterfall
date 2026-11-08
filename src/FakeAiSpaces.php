@@ -52,7 +52,10 @@ class FakeAiSpaces extends AiSpaces
     public function conversations(string $space, array $query = []): array
     {
         $this->calls[] = ['conversations', func_get_args()];
-        $rows = array_values($this->threads[$space] ?? []);
+        // Chat unless asked (1.58.0): a console session never reaches the panel's list, as in ai-service.
+        $channel = $query['channel'] ?? 'chat';
+        $rows = array_values(array_filter($this->threads[$space] ?? [], fn ($t) => ($t['channel'] ?? 'chat') === $channel
+            && (($query['subject_ref'] ?? '') === '' || ($t['subject_ref'] ?? null) === $query['subject_ref'])));
         if (array_key_exists('pinned', $query)) {
             $rows = array_values(array_filter($rows, fn ($t) => ($t['pinned_at'] !== null) === (bool) $query['pinned']));
         }
@@ -81,6 +84,9 @@ class FakeAiSpaces extends AiSpaces
         $this->calls[] = ['search', func_get_args()];
         $hits = [];
         foreach ($this->threads[$space] ?? [] as $thread) {
+            if (($thread['channel'] ?? 'chat') !== 'chat') {
+                continue;
+            }
             $said = array_filter($this->turns[$thread['id']] ?? [], fn ($t) => str_contains(mb_strtolower((string) $t['body']), mb_strtolower($q)));
             if (str_contains(mb_strtolower((string) $thread['title']), mb_strtolower($q))) {
                 $hits[] = ['conversation' => $this->wire($thread), 'match' => 'title', 'snippet' => (string) $thread['title'], 'turn_at' => null];
@@ -98,7 +104,8 @@ class FakeAiSpaces extends AiSpaces
         $this->spaceOrFail($space);
         $id = $this->uuid();
         $this->threads[$space][$id] = ['id' => $id, 'title' => $thread['title'] ?? null, 'pinned_at' => null,
-            'state' => null, 'turn_count' => 0, '_at' => ++$this->clock];
+            'state' => null, 'turn_count' => 0, 'channel' => $thread['channel'] ?? 'chat',
+            'subject_ref' => $thread['subject_ref'] ?? null, '_at' => ++$this->clock];
 
         return ['conversation' => $this->wire($this->threads[$space][$id]), 'created' => true];
     }
@@ -213,6 +220,9 @@ class FakeAiSpaces extends AiSpaces
         $this->calls[] = ['inputHistory', func_get_args()];
         $asked = [];
         foreach ($this->threads[$space] ?? [] as $thread) {
+            if (($thread['channel'] ?? 'chat') !== 'chat') {
+                continue;
+            }
             foreach ($this->turns[$thread['id']] ?? [] as $turn) {
                 if ($turn['role'] === 'user' && trim((string) $turn['body']) !== '') {
                     $asked[] = trim((string) $turn['body']);
