@@ -617,6 +617,8 @@ shared brief. The UI is `@shirahcan/ai-ui/terminal` (`AssistantTerminal`).
 `/compact` runs ai-service's shared prompt `shared.terminal.compact`; no product template is needed.
 The recap a person sees on coming back (`POST .../sessions/{session}/recap`, `away_minutes`, 1.60.0) runs `shared.terminal.recap` through `SessionRecap`: a few first-person lines on what is being made, what changed, what is waiting and a next step, kept on the session per last turn (a second return with nothing new is free). It answers `recap: null, unavailable: true` when it cannot be written, so the panel keeps its own recap and never shows an error for something the person did not ask for by name.
 
+What a session has cost (`GET .../sessions/{session}/usage`, 1.62.0) is read from ai-service, the one authority on AI cost: every call made for the session carries `SessionUsage::tag($client, $session, $level)` (correlation key `SessionUsage::key()`), the kit's own recap and summary included, and `SessionUsage::of()` sums them per LEVEL (never the model). A product tags its own console calls with the same function. The person's own commands (saved asks, `GET`/`PUT .../commands`, 1.62.0) live with their space in ai-service (`AiSpaces::commands()` / `saveCommands()`), never in its memory.
+
 ### Level, effort and output size per call (1.59.0)
 
 ```php

@@ -147,6 +147,27 @@ class AiSpaces
         return (int) ($this->client->deleteJson($this->path($space, 'memory'))['memories'] ?? 0);
     }
 
+    /**
+     * The person's own console commands (1.62.0, "saved asks"): kept with the space, never in its memory.
+     *
+     * @return list<array{name: string, ask: string, description: ?string}>
+     */
+    public function commands(string $space): array
+    {
+        return array_values((array) ($this->client->getJson($this->path($space, 'commands'))['commands'] ?? []));
+    }
+
+    /**
+     * Replace them (the console edits them as one list).
+     *
+     * @param  list<array{name: string, ask: string, description?: ?string}>  $commands
+     * @return list<array{name: string, ask: string, description: ?string}>
+     */
+    public function saveCommands(string $space, array $commands): array
+    {
+        return array_values((array) ($this->client->putJson($this->path($space, 'commands'), ['commands' => array_values($commands)])['commands'] ?? []));
+    }
+
     /** @return list<string> the person's own questions, newest first, once each */
     public function inputHistory(string $space, int $limit = 50): array
     {

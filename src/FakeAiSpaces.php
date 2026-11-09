@@ -30,6 +30,9 @@ class FakeAiSpaces extends AiSpaces
     /** What `prompts()` answers; a test sets it. */
     public array $suggested = [];
 
+    /** @var array<string, list<array<string, mixed>>> space id => the person's own commands (1.62.0) */
+    public array $commands = [];
+
     private int $clock = 0;
 
     public function __construct()
@@ -213,6 +216,24 @@ class FakeAiSpaces extends AiSpaces
         $this->memories[$space] = [];
 
         return $n;
+    }
+
+    public function commands(string $space): array
+    {
+        $this->calls[] = ['commands', func_get_args()];
+
+        return $this->commands[$space] ?? [];
+    }
+
+    public function saveCommands(string $space, array $commands): array
+    {
+        $this->calls[] = ['saveCommands', func_get_args()];
+
+        return $this->commands[$space] = array_map(static fn (array $c) => [
+            'name' => (string) $c['name'],
+            'ask' => trim((string) $c['ask']),
+            'description' => isset($c['description']) && trim((string) $c['description']) !== '' ? trim((string) $c['description']) : null,
+        ], array_values($commands));
     }
 
     public function inputHistory(string $space, int $limit = 50): array

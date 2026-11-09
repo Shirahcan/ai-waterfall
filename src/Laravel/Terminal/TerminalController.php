@@ -31,7 +31,47 @@ final class TerminalController extends Controller
         private readonly TerminalSessions $sessions,
         private readonly SessionCompactor $compactor,
         private readonly SessionRecap $recaps,
+        private readonly SessionUsage $usage,
     ) {}
+
+    /**
+     * What this session has cost so far, by level (1.62.0, `/cost`): read from ai-service, which counts
+     * every call the session's asks, recaps and summaries made. `usage: null` when it cannot be read.
+     */
+    public function usage(Request $request, string $kind, string $id, string $session): JsonResponse
+    {
+        return $this->on($request, $kind, $id, function (string $space, string $ref) use ($session) {
+            // Opened first: another person's session, or another subject's, is a 404 before anything is read.
+            $open = $this->sessions->open($space, $session, $ref);
+
+            try {
+                return ['usage' => $this->usage->of($session, isset($open['session']['created_at']) ? (string) $open['session']['created_at'] : null)];
+            } catch (AiRequestRefusedException|AiUnavailableException $e) {
+                report($e);
+
+                return ['usage' => null];
+            }
+        });
+    }
+
+    /** The person's own console commands (1.62.0, "saved asks"), from their space. */
+    public function commands(Request $request, string $kind, string $id): JsonResponse
+    {
+        return $this->on($request, $kind, $id, fn (string $space) => ['commands' => $this->sessions->commands($space)]);
+    }
+
+    /** Replace the person's own commands (the console edits them as one list). */
+    public function saveCommands(Request $request, string $kind, string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'commands' => ['present', 'array', 'max:30'],
+            'commands.*.name' => ['required', 'string', 'regex:/^[a-z0-9][a-z0-9-]{1,23}$/', 'distinct'],
+            'commands.*.ask' => ['required', 'string', 'max:2000'],
+            'commands.*.description' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        return $this->on($request, $kind, $id, fn (string $space) => ['commands' => $this->sessions->saveCommands($space, array_values($data['commands']))]);
+    }
 
     /** The subject's console as it opens: the latest session (none yet: null), brief, size, history. */
     public function show(Request $request, string $kind, string $id): JsonResponse

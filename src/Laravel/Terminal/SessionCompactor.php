@@ -52,7 +52,8 @@ final class SessionCompactor
             return null;
         }
 
-        $result = ($as ?? $this->ai)->runTask(self::TASK, [
+        // Counted in the session's cost (/cost, 1.62.0); a product's own client keeps its own tags.
+        $result = ($as ?? SessionUsage::tag($this->ai, $sessionId))->runTask(self::TASK, [
             'previous_summary' => $previous['text'] ?? '',
             // As JSON text: a template substitutes strings, and the model reads the turns as data.
             'turns' => (string) json_encode(array_map(fn (array $p) => [

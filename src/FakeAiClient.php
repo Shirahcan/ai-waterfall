@@ -453,8 +453,16 @@ class FakeAiClient extends AiClient
         ]];
     }
 
+    /** @var array<string, array<string, int>> correlation key => the totals `usage()` answers for it (1.62.0) */
+    public array $usageByKey = [];
+
     public function usage(array $query = []): array
     {
+        // A query for one correlation key answers what the test set for it (none: nothing spent).
+        if (isset($query['correlation_key'])) {
+            return ['totals' => $this->usageByKey[$query['correlation_key']] ?? ['calls' => 0, 'tokens_in' => 0, 'tokens_out' => 0, 'spend_micros' => 0]];
+        }
+
         return ['totals' => ['calls' => count($this->log->calls)]];
     }
 

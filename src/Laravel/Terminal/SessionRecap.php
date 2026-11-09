@@ -58,7 +58,8 @@ final class SessionRecap
         $pairs = array_slice(SessionWindow::pairs($live), -self::RECENT_PAIRS);
         $summary = TerminalSessions::summary($session);
 
-        $result = $this->ai->runTask(self::TASK, [
+        // Counted in the session's cost (/cost, 1.62.0).
+        $result = SessionUsage::tag($this->ai, $sessionId)->runTask(self::TASK, [
             'assistant' => trim((string) config('ai-client.assistant.display_name')) ?: 'the assistant',
             'subject' => $subjectLabel,
             'away' => self::away($awayMinutes),

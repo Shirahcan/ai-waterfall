@@ -12,6 +12,7 @@ use Shirahcan\AiClient\FakeAiClient;
 use Shirahcan\AiClient\FakeAiSpaces;
 use Shirahcan\AiClient\Laravel\Terminal\SessionCompactor;
 use Shirahcan\AiClient\Laravel\Terminal\SessionRecap;
+use Shirahcan\AiClient\Laravel\Terminal\SessionUsage;
 use Shirahcan\AiClient\Laravel\Terminal\SessionWindow;
 use Shirahcan\AiClient\Laravel\Terminal\TerminalRoutes;
 use Shirahcan\AiClient\Laravel\Terminal\TerminalSessions;
@@ -308,5 +309,56 @@ class TerminalTest extends TestCase
     {
         // Shared prompts publish with ai-service itself, so no product has to carry a copy.
         $this->assertStringStartsWith('shared.', SessionCompactor::TASK);
+    }
+
+    public function test_a_sessions_cost_is_read_by_level_from_its_own_calls(): void
+    {
+        $session = $this->as('u-1')->postJson('/v1/admin/console/site_page/p1/sessions')->json('data.session.id');
+        $this->ai->usageByKey[SessionUsage::key($session)] = ['calls' => 3, 'tokens_in' => 9000, 'tokens_out' => 700, 'spend_micros' => 0];
+        $this->ai->usageByKey[SessionUsage::key($session, 'pro')] = ['calls' => 1, 'tokens_in' => 4000, 'tokens_out' => 900, 'spend_micros' => 42_100];
+
+        $usage = $this->as('u-1')->getJson("/v1/admin/console/site_page/p1/sessions/{$session}/usage")->assertOk()->json('data.usage');
+
+        $this->assertSame(['normal', 'pro', 'expert'], array_column($usage['levels'], 'level'));
+        $this->assertSame(1, $usage['levels'][1]['calls']);
+        $this->assertSame(0.0421, $usage['levels'][1]['cost_usd']);
+        $this->assertSame(4, $usage['total']['calls']);
+        $this->assertSame(13000, $usage['total']['tokens_in']);
+        $this->assertLessThanOrEqual(80, strlen(SessionUsage::key($session, 'expert')), 'ai-service caps a correlation key at 80');
+        $this->assertSame(SessionUsage::key($session), SessionUsage::key($session, 'gibberish'), 'an unknown level counts as normal');
+    }
+
+    public function test_another_persons_session_has_no_cost_to_read(): void
+    {
+        $session = $this->as('u-1')->postJson('/v1/admin/console/site_page/p1/sessions')->json('data.session.id');
+
+        $this->as('u-2')->getJson("/v1/admin/console/site_page/p1/sessions/{$session}/usage")->assertNotFound();
+    }
+
+    public function test_the_kits_own_recap_is_counted_in_the_sessions_cost(): void
+    {
+        $space = $this->spaceOf('u-1');
+        $session = $this->as('u-1')->postJson('/v1/admin/console/site_page/p1/sessions')->json('data.session.id');
+        $this->turn($space, $session, 'Make the hero darker', ['changed' => true, 'elements' => 1], 'Darker hero.');
+        $this->ai->queue(['lines' => ['I made the hero darker.']]);
+
+        $this->as('u-1')->postJson("/v1/admin/console/site_page/p1/sessions/{$session}/recap")->assertOk();
+
+        $this->assertSame(SessionUsage::key($session), $this->ai->log->correlation['_key'] ?? null);
+    }
+
+    public function test_the_persons_own_commands_are_kept_with_their_space(): void
+    {
+        $this->as('u-1')->getJson('/v1/admin/console/site_page/p1/commands')->assertOk()->assertJsonPath('data.commands', []);
+
+        $this->as('u-1')->putJson('/v1/admin/console/site_page/p1/commands', ['commands' => [
+            ['name' => 'seo-pass', 'ask' => 'Check every heading for search.', 'description' => 'Search pass'],
+        ]])->assertOk()->assertJsonPath('data.commands.0.name', 'seo-pass');
+
+        // The same person on another subject has them too; another person does not.
+        $this->as('u-1')->getJson('/v1/admin/console/site_page/p2/commands')->assertOk()->assertJsonPath('data.commands.0.ask', 'Check every heading for search.');
+        $this->as('u-2')->getJson('/v1/admin/console/site_page/p1/commands')->assertOk()->assertJsonPath('data.commands', []);
+
+        $this->as('u-1')->putJson('/v1/admin/console/site_page/p1/commands', ['commands' => [['name' => 'Bad Name', 'ask' => 'x']]])->assertStatus(422);
     }
 }

@@ -215,6 +215,25 @@ final class TerminalSessions
         return is_array($summary) && trim((string) ($summary['text'] ?? '')) !== '' ? $summary : null;
     }
 
+    /**
+     * The person's own console commands (1.62.0, "saved asks"), kept with their space in ai-service.
+     *
+     * @return list<array{name: string, ask: string, description: ?string}>
+     */
+    public function commands(string $space): array
+    {
+        return $this->ai->spaces()->commands($space);
+    }
+
+    /**
+     * @param  list<array{name: string, ask: string, description?: ?string}>  $commands
+     * @return list<array{name: string, ask: string, description: ?string}>
+     */
+    public function saveCommands(string $space, array $commands): array
+    {
+        return $this->ai->spaces()->saveCommands($space, $commands);
+    }
+
     /** @return array{text: string, by: ?string, at: ?string}|null */
     public function brief(string $subjectRef): ?array
     {

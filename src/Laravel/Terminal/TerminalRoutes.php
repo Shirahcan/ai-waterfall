@@ -40,5 +40,9 @@ final class TerminalRoutes
         Route::post($p.'/sessions/{session}/recap', [$c, 'recap'])->where($where)->middleware('throttle:20,1')->name('assistant.terminal.sessions.recap');
         Route::post($p.'/sessions/{session}/rewind', [$c, 'rewind'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.sessions.rewind');
         Route::put($p.'/brief', [$c, 'brief'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.brief');
+        // 1.62.0: what a session has cost (/cost), and the person's own commands (saved asks).
+        Route::get($p.'/sessions/{session}/usage', [$c, 'usage'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.sessions.usage');
+        Route::get($p.'/commands', [$c, 'commands'])->where($where)->middleware('throttle:60,1')->name('assistant.terminal.commands');
+        Route::put($p.'/commands', [$c, 'saveCommands'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.commands.save');
     }
 }
