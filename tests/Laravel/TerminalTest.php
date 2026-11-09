@@ -347,6 +347,18 @@ class TerminalTest extends TestCase
         $this->assertSame(SessionUsage::key($session), $this->ai->log->correlation['_key'] ?? null);
     }
 
+    public function test_an_ask_keeps_its_files_ids_beside_their_names(): void
+    {
+        $space = $this->spaceOf('u-1');
+        $session = $this->as('u-1')->postJson('/v1/admin/console/site_page/p1/sessions')->json('data.session.id');
+
+        $turn = $this->sessions()->appendAsk($space, $session, 'Mirror this', ['files' => ['a.png', 'b.pdf'], 'file_ids' => ['id-a', 'id-b', 'id-c', 'id-d']]);
+
+        $this->assertSame(['a.png', 'b.pdf'], $turn['structured']['files']);
+        $this->assertSame(['id-a', 'id-b', 'id-c'], $turn['structured']['file_ids'], 'at most three, like the files');
+        $this->assertArrayNotHasKey('file_ids', $this->sessions()->appendAsk($space, $session, 'No files')['structured']);
+    }
+
     public function test_the_persons_own_commands_are_kept_with_their_space(): void
     {
         $this->as('u-1')->getJson('/v1/admin/console/site_page/p1/commands')->assertOk()->assertJsonPath('data.commands', []);

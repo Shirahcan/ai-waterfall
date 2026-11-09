@@ -123,6 +123,9 @@ final class TerminalSessions
         $structured = array_filter([
             'target' => $meta['target'] ?? null,
             'files' => array_values(array_map(fn ($f) => self::clip((string) $f, 120), $meta['files'] ?? [])),
+            // 1.62.1: the files' ids beside their names, in the same order, so a later ask can reach a file the
+            // person attached earlier ("Compare with the picture"). Ids only, never the file.
+            'file_ids' => array_values(array_map(fn ($f) => self::clip((string) $f, 64), array_slice((array) ($meta['file_ids'] ?? []), 0, 3))),
             'mode' => $meta['mode'] ?? 'build',
             // 1.59.0: the answers this ask gives to the assistant's questions, as the person picked them.
             'answers' => self::answers((array) ($meta['answers'] ?? [])),
