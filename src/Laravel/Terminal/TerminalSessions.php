@@ -27,10 +27,26 @@ final class TerminalSessions
 
     public const STEP_TEXT_MAX = 200;
 
-    /** A step's detail: one line, except the assistant's own thinking (a `think` step), a short paragraph. */
-    public const STEP_DETAIL_MAX = 200;
+    /**
+     * A step's detail and the assistant's own thinking (a `think` step), kept WHOLE up to a safety cap
+     * (1.59.0, owner 2026-11-09: "instead of truncating the responses (especially reasoning), they should
+     * be collapsed/folded"). The console folds them; a cap that is reached cuts at a word, never mid-word.
+     */
+    public const STEP_DETAIL_MAX = 2000;
 
-    public const THINKING_MAX = 800;
+    public const THINKING_MAX = 20000;
+
+    /** What an answer may carry besides its words (1.59.0): the findings, questions and ideas. */
+    public const FINDINGS_MAX = 8;
+
+    public const QUESTIONS_MAX = 4;
+
+    public const OPTIONS_MAX = 6;
+
+    public const IDEAS_MAX = 6;
+
+    /** The kinds of finding a summary may list, as Claude Code's summary does. */
+    public const FINDING_KINDS = ['issue', 'error', 'gap', 'suggestion'];
 
     public const BRIEF_KEY = 'terminal.brief';
 
@@ -108,6 +124,8 @@ final class TerminalSessions
             'target' => $meta['target'] ?? null,
             'files' => array_values(array_map(fn ($f) => self::clip((string) $f, 120), $meta['files'] ?? [])),
             'mode' => $meta['mode'] ?? 'build',
+            // 1.59.0: the answers this ask gives to the assistant's questions, as the person picked them.
+            'answers' => self::answers((array) ($meta['answers'] ?? [])),
         ], fn ($v) => $v !== null && $v !== []);
 
         return (array) ($this->ai->spaces()->append($space, $sessionId, [
@@ -124,10 +142,16 @@ final class TerminalSessions
      *
      * @param  list<array{kind?: string, text?: string, ms?: ?int, detail?: ?string}>  $steps
      * @param  array<string, mixed>  $outcome  changed, elements, kept, conflicts, reason
-     * @param  array{checkpoint_id?: ?string, run_id?: ?string, plan?: ?array}  $refs
+     * 1.59.0 adds what the person may want besides the words: the level asked and the one that answered,
+     * the effort, the findings (issues, errors, gaps, suggestions), the questions (each with choices), and
+     * a brainstorm's ideas and recommendation.
+     *
+     * @param  array{checkpoint_id?: ?string, run_id?: ?string, plan?: ?array, level?: ?string, served_level?: ?string, effort?: ?string, findings?: list<array{kind: string, text: string}>, questions?: list<array<string, mixed>>, ideas?: list<array{title: string, why?: ?string}>, recommendation?: ?string}  $refs
      */
     public function appendAnswer(string $space, string $sessionId, ?string $reply, array $steps, array $outcome, array $refs = []): array
     {
+        $level = fn ($v) => in_array($v, ['normal', 'pro', 'expert'], true) ? $v : null;
+
         return (array) ($this->ai->spaces()->append($space, $sessionId, [
             'role' => 'assistant',
             'body' => $reply === null || trim($reply) === '' ? null : $reply,
@@ -137,7 +161,14 @@ final class TerminalSessions
                 'checkpoint_id' => $refs['checkpoint_id'] ?? null,
                 'run_id' => $refs['run_id'] ?? null,
                 'plan' => $refs['plan'] ?? null,
-            ], fn ($v) => $v !== null),
+                'level' => $level($refs['level'] ?? null),
+                'served_level' => $level($refs['served_level'] ?? null),
+                'effort' => in_array($refs['effort'] ?? null, ['low', 'medium', 'high'], true) ? $refs['effort'] : null,
+                'findings' => self::findings((array) ($refs['findings'] ?? [])),
+                'questions' => self::questions((array) ($refs['questions'] ?? [])),
+                'ideas' => self::ideas((array) ($refs['ideas'] ?? [])),
+                'recommendation' => isset($refs['recommendation']) && trim((string) $refs['recommendation']) !== '' ? self::keep((string) $refs['recommendation'], self::STEP_DETAIL_MAX) : null,
+            ], fn ($v) => $v !== null && $v !== []),
             'surface' => 'studio',
         ])['turn'] ?? []);
     }
@@ -227,13 +258,114 @@ final class TerminalSessions
                 'kind' => (string) ($step['kind'] ?? 'step'),
                 'text' => self::clip($text, self::STEP_TEXT_MAX),
                 'ms' => isset($step['ms']) ? max(0, (int) $step['ms']) : null,
+                // Line breaks kept: the console folds a long detail by its lines.
                 'detail' => isset($step['detail']) && trim((string) $step['detail']) !== ''
-                    ? self::clip((string) $step['detail'], ($step['kind'] ?? '') === 'think' ? self::THINKING_MAX : self::STEP_DETAIL_MAX)
+                    ? self::keep((string) $step['detail'], ($step['kind'] ?? '') === 'think' ? self::THINKING_MAX : self::STEP_DETAIL_MAX)
                     : null,
             ];
         }
 
         return $out;
+    }
+
+    /** @return list<array{kind: string, text: string}> */
+    public static function findings(array $findings): array
+    {
+        $out = [];
+
+        foreach ($findings as $f) {
+            $kind = strtolower(trim((string) (is_array($f) ? ($f['kind'] ?? '') : '')));
+            $text = trim((string) (is_array($f) ? ($f['text'] ?? '') : ''));
+
+            if (in_array($kind, self::FINDING_KINDS, true) && $text !== '') {
+                $out[] = ['kind' => $kind, 'text' => self::keep($text, 600)];
+            }
+        }
+
+        return array_slice($out, 0, self::FINDINGS_MAX);
+    }
+
+    /**
+     * A question with its choices, the console's multiple-choice tool: `{text, options: [{label,
+     * description}], multi}`. A question with no choices is still a question (the person types).
+     *
+     * @return list<array{text: string, options: list<array{label: string, description: ?string}>, multi: bool}>
+     */
+    public static function questions(array $questions): array
+    {
+        $out = [];
+
+        foreach ($questions as $q) {
+            $q = is_string($q) ? ['text' => $q] : (is_array($q) ? $q : []);
+            $text = trim((string) ($q['text'] ?? $q['question'] ?? ''));
+
+            if ($text === '') {
+                continue;
+            }
+
+            $options = [];
+            foreach (array_slice((array) ($q['options'] ?? []), 0, self::OPTIONS_MAX) as $o) {
+                $label = trim((string) (is_array($o) ? ($o['label'] ?? '') : $o));
+                if ($label !== '') {
+                    $why = is_array($o) ? trim((string) ($o['description'] ?? '')) : '';
+                    $options[] = ['label' => self::clip($label, 80), 'description' => $why === '' ? null : self::clip($why, 240)];
+                }
+            }
+
+            $out[] = ['text' => self::keep($text, 600), 'options' => $options, 'multi' => (bool) ($q['multi'] ?? false)];
+        }
+
+        return array_slice($out, 0, self::QUESTIONS_MAX);
+    }
+
+    /** @return list<array{title: string, why: ?string}> a brainstorm's ideas */
+    public static function ideas(array $ideas): array
+    {
+        $out = [];
+
+        foreach ($ideas as $i) {
+            $title = trim((string) (is_array($i) ? ($i['title'] ?? '') : $i));
+            if ($title !== '') {
+                $why = is_array($i) ? trim((string) ($i['why'] ?? '')) : '';
+                $out[] = ['title' => self::clip($title, 160), 'why' => $why === '' ? null : self::keep($why, 600)];
+            }
+        }
+
+        return array_slice($out, 0, self::IDEAS_MAX);
+    }
+
+    /** @return list<array{question: string, answer: string}> the person's answers, as they read them */
+    private static function answers(array $answers): array
+    {
+        $out = [];
+
+        foreach (array_slice($answers, 0, self::QUESTIONS_MAX) as $a) {
+            $question = trim((string) (is_array($a) ? ($a['question'] ?? '') : ''));
+            $answer = trim((string) (is_array($a) ? ($a['answer'] ?? '') : ''));
+            if ($question !== '' && $answer !== '') {
+                $out[] = ['question' => self::clip($question, 600), 'answer' => self::keep($answer, 1000)];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * A text kept as written (line breaks and all), up to a cap that cuts at a word with "…". For what
+     * the console FOLDS rather than cuts: thinking, details, findings.
+     */
+    public static function keep(string $text, int $max): string
+    {
+        $text = trim((string) preg_replace("/\n{3,}/", "\n\n", str_replace(["\r\n", "\r"], "\n", $text)));
+
+        if (mb_strlen($text) <= $max) {
+            return $text;
+        }
+
+        $cut = mb_substr($text, 0, $max - 1);
+        $space = mb_strrpos($cut, ' ');
+
+        return rtrim($space !== false && $space > $max * 0.8 ? mb_substr($cut, 0, $space) : $cut).'…';
     }
 
     private static function clip(string $text, int $max): string

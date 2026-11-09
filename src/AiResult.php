@@ -21,6 +21,9 @@ class AiResult
         public readonly ?int $tokensIn = null,
         public readonly ?int $tokensOut = null,
         public readonly array $attempts = [],
+        // 1.59.0: the level that answered (only when the call asked for one), and an answer stopped at its ceiling.
+        public readonly ?string $level = null,
+        public readonly bool $cutOff = false,
     ) {}
 
     public static function fromArray(array $r): self
@@ -33,6 +36,8 @@ class AiResult
             tokensIn: $r['tokens']['in'] ?? null,
             tokensOut: $r['tokens']['out'] ?? null,
             attempts: $r['attempts'] ?? [],
+            level: isset($r['level']) ? (string) $r['level'] : null,
+            cutOff: ($r['cut_off'] ?? false) === true,
         );
     }
 

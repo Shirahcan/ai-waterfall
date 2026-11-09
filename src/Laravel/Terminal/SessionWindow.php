@@ -59,7 +59,7 @@ final class SessionWindow
                 'reply' => $p['reply'] === null ? null : self::elide($p['reply'], self::VERBATIM_MAX_CHARS),
                 'steps' => $p['steps'],
                 'outcome' => $p['outcome'],
-            ], $recent),
+            ] + (($p['findings'] ?? []) !== [] ? ['findings' => $p['findings']] : []), $recent),
         ];
     }
 
@@ -126,9 +126,17 @@ final class SessionWindow
 
             $s = is_array($turn['structured'] ?? null) ? $turn['structured'] : [];
             $open['reply'] = trim((string) ($turn['body'] ?? '')) === '' ? null : trim((string) $turn['body']);
+            // ⚠ THE ASSISTANT'S OWN THINKING STAYS OUT (1.59.0): it is kept whole for the person to unfold
+            // (up to 20,000 characters), and handing it back would spend the window on reasoning already
+            // acted on. A step's detail is one short line here.
             $open['steps'] = array_values(array_map(
-                fn (array $step) => trim((string) ($step['text'] ?? '')).(($step['detail'] ?? null) ? ' ('.trim((string) $step['detail']).')' : ''),
-                array_filter((array) ($s['steps'] ?? []), 'is_array'),
+                fn (array $step) => trim((string) ($step['text'] ?? '')).(($step['detail'] ?? null) ? ' ('.self::elide(trim((string) $step['detail']), 200).')' : ''),
+                array_filter((array) ($s['steps'] ?? []), fn ($step) => is_array($step) && ($step['kind'] ?? '') !== 'think'),
+            ));
+            // What the assistant pointed out (issues, gaps, suggestions): the next ask may be about them.
+            $open['findings'] = array_values(array_map(
+                fn (array $f) => ucfirst((string) ($f['kind'] ?? 'note')).': '.trim((string) ($f['text'] ?? '')),
+                array_filter((array) ($s['findings'] ?? []), 'is_array'),
             ));
             $open['outcome'] = self::outcome((array) ($s['outcome'] ?? []), is_array($s['plan'] ?? null) ? $s['plan'] : null);
             $open['ids'][] = (string) ($turn['id'] ?? '');

@@ -78,4 +78,11 @@ class FakeCallLog
 
     /** The named ladder the last call asked for, via withRoute(). */
     public ?string $routeKey = null;
+
+    /** 1.59.0: the level, effort and output size the last call asked for (withLevel/withEffort/withMaxOutput). */
+    public ?string $level = null;
+
+    public ?string $effort = null;
+
+    public ?int $maxOutputTokens = null;
 }

@@ -616,6 +616,29 @@ shared brief. The UI is `@shirahcan/ai-ui/terminal` (`AssistantTerminal`).
 
 `/compact` runs ai-service's shared prompt `shared.terminal.compact`; no product template is needed.
 
+### Level, effort and output size per call (1.59.0)
+
+```php
+$ai->withLevel('expert')      // normal | pro | expert: the level's models first, each lower level's after
+   ->withEffort('high')       // low | medium | high, as each provider takes it
+   ->withMaxOutput(12000)     // output tokens for THIS call; wins over the template's `max_output_tokens:`
+   ->runTask('mira.read', $vars);
+```
+
+- A level never fails a call: Expert with no Opus key is answered by Pro, then by the ordinary ladder.
+  The models behind each level are an admin's routes (`_level:pro`, `_level:expert`) on Task routing.
+- The answer says which level answered (`AiResult::$level`, `AiStreamEvent::servedLevel()`) and whether
+  it stopped at its output ceiling (`AiResult::$cutOff`, `AiStreamEvent::cutOff()`); ai-service records
+  cut answers in `ai_usage.cut_off`.
+- A template can carry its own `max_output_tokens:` in front matter (synced), and an admin can change it
+  on the vault console without a deploy.
+- Unset, every request is exactly what it was. Needs ai-service with the same release (2026-11-09).
+
+The console keeps the assistant's thinking whole (up to 20,000 characters) and step details up to 2,000,
+line breaks and all, for the UI to fold; `appendAnswer()` takes `level`, `served_level`, `effort`,
+`findings`, `questions`, `ideas` and `recommendation` in `$refs`, `appendAsk()` takes `answers`.
+`SessionWindow` hands findings to the next ask and leaves the thinking out.
+
 ## The assistant panel on spaces (1.57.0)
 
 One shared panel for every product (owner 2026-11-08). ai-service holds a **space** per person (or

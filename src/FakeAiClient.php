@@ -925,6 +925,28 @@ class FakeAiClient extends AiClient
         return parent::withRoute($routeKey);
     }
 
+    // 1.59.0: recorded BEFORE the clone, like the route, so the test holding the original sees them.
+    public function withLevel(?string $level): static
+    {
+        $this->log->level = in_array($level, self::LEVELS, true) && $level !== 'normal' ? $level : null;
+
+        return parent::withLevel($level);
+    }
+
+    public function withEffort(?string $effort): static
+    {
+        $this->log->effort = in_array($effort, self::EFFORTS, true) ? $effort : null;
+
+        return parent::withEffort($effort);
+    }
+
+    public function withMaxOutput(?int $tokens): static
+    {
+        $this->log->maxOutputTokens = $tokens !== null && $tokens > 0 ? max(256, min($tokens, 128000)) : null;
+
+        return parent::withMaxOutput($tokens);
+    }
+
     public function withPreferredModels(array $pairs): static
     {
         // Recorded BEFORE the clone, or the test holding the original sees nothing.

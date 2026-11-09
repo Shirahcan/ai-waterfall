@@ -157,6 +157,37 @@ class TerminalTest extends TestCase
         $this->assertSame(['Make the hero dark', 'Add a FAQ from vanhack.com'], array_column(SessionWindow::build($after['session'], $after['turns'], null)['recent'], 'ask'));
     }
 
+    public function test_thinking_is_kept_whole_for_the_person_and_left_out_of_the_next_asks_window(): void
+    {
+        $space = $this->spaceOf('u-1');
+        $session = $this->sessions()->start($space, 'site_page:p1')['id'];
+        $thinking = "They want a Q&A below the last section.\n\n".str_repeat('I will keep every other section exactly as it is. ', 40);
+
+        $this->sessions()->appendAsk($space, $session, 'Add a Q&A', ['answers' => [['question' => 'How many questions?', 'answer' => 'Five']]]);
+        $this->sessions()->appendAnswer($space, $session, 'Added a Q&A.', [
+            ['kind' => 'think', 'text' => 'Thinking', 'detail' => $thinking],
+            ['kind' => 'write', 'text' => 'Writing the FAQ', 'detail' => str_repeat('x', 500)],
+        ], ['changed' => true], [
+            'level' => 'expert', 'served_level' => 'pro', 'effort' => 'high',
+            'findings' => [['kind' => 'gap', 'text' => 'The page has no contact link.'], ['kind' => 'nonsense', 'text' => 'dropped']],
+            'questions' => [['text' => 'Which tone?', 'options' => [['label' => 'Warm', 'description' => 'Friendly'], 'Formal']]],
+        ]);
+
+        $turns = $this->sessions()->open($space, $session, 'site_page:p1')['turns'];
+        $answer = $turns[1]['structured'];
+
+        $this->assertSame(trim($thinking), $answer['steps'][0]['detail'], 'kept whole, line breaks and all');
+        $this->assertSame(['expert', 'pro', 'high'], [$answer['level'], $answer['served_level'], $answer['effort']]);
+        $this->assertSame([['kind' => 'gap', 'text' => 'The page has no contact link.']], $answer['findings']);
+        $this->assertSame(['label' => 'Formal', 'description' => null], $answer['questions'][0]['options'][1]);
+        $this->assertSame('Five', $turns[0]['structured']['answers'][0]['answer']);
+
+        $window = SessionWindow::build($this->sessions()->open($space, $session, 'site_page:p1')['session'], $turns, null);
+        $this->assertCount(1, $window['recent'][0]['steps'], 'the thinking is not handed back');
+        $this->assertLessThan(260, mb_strlen($window['recent'][0]['steps'][0]));
+        $this->assertSame(['Gap: The page has no contact link.'], $window['recent'][0]['findings']);
+    }
+
     public function test_size_is_reported_by_part_and_compaction_is_due_only_with_something_to_fold(): void
     {
         $window = ['brief' => str_repeat('b', 400), 'summary' => null, 'nearby' => ['x -> y'], 'recent' => []];

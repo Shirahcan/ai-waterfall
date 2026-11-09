@@ -77,6 +77,23 @@ final class AiStreamEvent
      * The full text of a finished answer is on the `done` event as
      * `data['text']`, deliberately reachable but never by accident.
      */
+    /**
+     * The level that answered, on a `done` event of a call that asked for one (1.59.0): `expert`, `pro`
+     * or `normal` ("Expert unavailable, Pro answered"). Null when no level was asked.
+     */
+    public function servedLevel(): ?string
+    {
+        $level = $this->type === self::DONE ? ($this->data['level'] ?? null) : null;
+
+        return is_string($level) && $level !== '' ? $level : null;
+    }
+
+    /** Whether the answer stopped at its output ceiling (a `done` event, 1.59.0): it is incomplete. */
+    public function cutOff(): bool
+    {
+        return $this->type === self::DONE && ($this->data['cut_off'] ?? false) === true;
+    }
+
     /** The reasoning a `reasoning` event carries; empty for every other event. */
     public function reasoning(): string
     {

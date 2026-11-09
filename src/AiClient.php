@@ -136,6 +136,61 @@ class AiClient
         return $clone;
     }
 
+    /** The levels a call may ask for (1.59.0), lowest first. */
+    public const LEVELS = ['normal', 'pro', 'expert'];
+
+    /** The efforts a call may ask for (1.59.0). */
+    public const EFFORTS = ['low', 'medium', 'high'];
+
+    private ?string $level = null;
+
+    private ?string $effort = null;
+
+    private ?int $maxOutputTokens = null;
+
+    /**
+     * How capable a model this call should run on (1.59.0): `normal` (the ordinary waterfall), `pro`, or
+     * `expert`. The service puts the level's own models first and each lower level's after them, then the
+     * call's own ladder, so a level never fails a call: Expert with no Opus key is answered by Pro, and the
+     * answer says which level answered ({@see AiStreamEvent::servedLevel()}, {@see AiResult::$level}). The
+     * models behind each level are an admin's decision on Task routing (`_level:pro`, `_level:expert`).
+     * An unknown value is dropped, never sent. A CLONE, like every other with*().
+     */
+    public function withLevel(?string $level): static
+    {
+        $clone = clone $this;
+        $clone->level = in_array($level, self::LEVELS, true) && $level !== 'normal' ? $level : null;
+
+        return $clone;
+    }
+
+    /**
+     * How hard the model should think (1.59.0): `low`, `medium`, `high`, as each provider takes it (Claude's
+     * effort, a gpt-oss reasoning effort, a Gemini thinking level or budget). Unset, every request is what
+     * it was (streams think at low). A CLONE.
+     */
+    public function withEffort(?string $effort): static
+    {
+        $clone = clone $this;
+        $clone->effort = in_array($effort, self::EFFORTS, true) ? $effort : null;
+
+        return $clone;
+    }
+
+    /**
+     * How long this call's answer may be, in output tokens (1.59.0: "make the output length configurable
+     * per call"). Wins over the template's own `max_output_tokens:`, which wins over each model's default;
+     * the service keeps it within 256 and what the model can write. An answer that still stops at the
+     * ceiling says so ({@see AiResult::$cutOff}, {@see AiStreamEvent::cutOff()}). A CLONE.
+     */
+    public function withMaxOutput(?int $tokens): static
+    {
+        $clone = clone $this;
+        $clone->maxOutputTokens = $tokens !== null && $tokens > 0 ? max(256, min($tokens, 128000)) : null;
+
+        return $clone;
+    }
+
     /**
      * The caller's own identifiers, recorded on every usage row this call makes.
      *
@@ -296,6 +351,7 @@ class AiClient
             'audience'             => $this->personaAudience,
             'per_provider_timeout' => $this->perProviderTimeout,
             'assistant'            => $this->assistantBlock,
+            ...$this->tuning(),
         ], fn ($v) => $v !== null && $v !== []);
 
         yield from $this->openStream('api/v1/generate/stream', $body, $onOpen);
@@ -328,6 +384,7 @@ class AiClient
             'per_provider_timeout' => $this->perProviderTimeout,
             'route_key'            => $this->routeKey,
             'assistant'            => $this->assistantBlock,
+            ...$this->tuning(),
         ], fn ($v) => $v !== null && $v !== []);
 
         yield from $this->openStream('api/v1/tasks/'.rawurlencode($key).'/run/stream', $body, $onOpen);
@@ -1044,6 +1101,12 @@ class AiClient
         }
     }
 
+    /** @return array{level: ?string, effort: ?string, max_output_tokens: ?int} the call's tuning (nulls are dropped) */
+    private function tuning(): array
+    {
+        return ['level' => $this->level, 'effort' => $this->effort, 'max_output_tokens' => $this->maxOutputTokens];
+    }
+
     private function call(array $body, string $path = 'api/v1/generate'): AiResult
     {
         $body['budget_seconds']       = $this->budgetSeconds;
@@ -1054,6 +1117,7 @@ class AiClient
         $body['preferred_models']     = $this->preferredModels;
         $body['route_key']            = $this->routeKey;
         $body['assistant']            ??= $this->assistantBlock;
+        $body += $this->tuning();
 
         $body = array_filter($body, fn ($v) => $v !== null && $v !== []);
 

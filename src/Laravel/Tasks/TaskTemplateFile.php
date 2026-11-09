@@ -80,6 +80,8 @@ final class TaskTemplateFile
             'route_key'     => isset($meta['route_key']) ? (string) $meta['route_key'] : null,
             'sensitive'     => (bool) ($meta['sensitive'] ?? false),
             'persona'       => isset($meta['persona']) ? (string) $meta['persona'] : null,
+            // 1.59.0: the template's own output ceiling, used when a run names none (ai-service >= the same day).
+            'max_output_tokens' => isset($meta['max_output_tokens']) && (int) $meta['max_output_tokens'] > 0 ? (int) $meta['max_output_tokens'] : null,
         ], static fn ($v) => $v !== null);
     }
 
