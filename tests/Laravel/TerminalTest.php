@@ -7,9 +7,11 @@ use Illuminate\Http\Request;
 use Orchestra\Testbench\TestCase;
 use Shirahcan\AiClient\AiClient;
 use Shirahcan\AiClient\AiClientServiceProvider;
+use Shirahcan\AiClient\Exceptions\AiUnavailableException;
 use Shirahcan\AiClient\FakeAiClient;
 use Shirahcan\AiClient\FakeAiSpaces;
 use Shirahcan\AiClient\Laravel\Terminal\SessionCompactor;
+use Shirahcan\AiClient\Laravel\Terminal\SessionRecap;
 use Shirahcan\AiClient\Laravel\Terminal\SessionWindow;
 use Shirahcan\AiClient\Laravel\Terminal\TerminalRoutes;
 use Shirahcan\AiClient\Laravel\Terminal\TerminalSessions;
@@ -235,6 +237,71 @@ class TerminalTest extends TestCase
             ->assertJsonPath('data.brief.text', 'Employers are the audience.');
 
         $this->as('u-1')->putJson('/v1/admin/console/site_page/p1/brief', ['text' => ''])->assertOk()->assertJsonPath('data.brief', null);
+    }
+
+    public function test_the_recap_is_written_from_the_recent_turns_and_kept_for_the_same_point_in_the_session(): void
+    {
+        $space = $this->spaceOf('u-1');
+        $session = $this->as('u-1')->postJson('/v1/admin/console/site_page/p1/sessions')->json('data.session.id');
+        $this->turn($space, $session, 'Make the hero darker', ['changed' => true, 'elements' => 1], 'Darker hero.');
+        $this->ai->queue(['lines' => ['You are reworking the Home page hero; I made it darker.', 'Next, you could try a calmer headline.']]);
+        $calls = count($this->ai->log->calls);
+
+        $data = $this->as('u-1')->postJson("/v1/admin/console/site_page/p1/sessions/{$session}/recap", ['away_minutes' => 120])->assertOk()->json('data');
+
+        $this->assertFalse($data['unavailable']);
+        $this->assertSame(['You are reworking the Home page hero; I made it darker.', 'Next, you could try a calmer headline.'], $data['recap']['lines']);
+        $this->assertFalse($data['recap']['cached']);
+        $call = end($this->ai->log->calls);
+        $this->assertSame(SessionRecap::TASK, $call['task']);
+        $this->assertSame('about 2 hours', $call['payload']['vars']['away']);
+        $this->assertSame('Home page', $call['payload']['vars']['subject']);
+        $this->assertStringContainsString('"ask": "Make the hero darker"', $call['payload']['vars']['turns']);
+
+        // Back again with nothing new: read back, not paid for again.
+        $again = $this->as('u-1')->postJson("/v1/admin/console/site_page/p1/sessions/{$session}/recap", ['away_minutes' => 45])->assertOk()->json('data');
+        $this->assertTrue($again['recap']['cached']);
+        $this->assertSame($data['recap']['lines'], $again['recap']['lines']);
+        $this->assertCount($calls + 1, $this->ai->log->calls);
+
+        // A new ask moves the session on: the next recap is written afresh.
+        $this->turn($space, $session, 'Add a FAQ', ['changed' => true, 'elements' => 3]);
+        $this->ai->queue(['lines' => ['I added a FAQ under the hero.']]);
+        $fresh = $this->as('u-1')->postJson("/v1/admin/console/site_page/p1/sessions/{$session}/recap")->assertOk()->json('data');
+        $this->assertSame(['I added a FAQ under the hero.'], $fresh['recap']['lines']);
+        $this->assertFalse($fresh['recap']['cached']);
+    }
+
+    public function test_a_session_with_nothing_asked_has_no_recap_and_costs_nothing(): void
+    {
+        $session = $this->as('u-1')->postJson('/v1/admin/console/site_page/p1/sessions')->json('data.session.id');
+        $calls = count($this->ai->log->calls);
+
+        $this->as('u-1')->postJson("/v1/admin/console/site_page/p1/sessions/{$session}/recap")->assertOk()
+            ->assertJsonPath('data.recap', null)->assertJsonPath('data.unavailable', false);
+        $this->assertCount($calls, $this->ai->log->calls);
+    }
+
+    public function test_a_recap_that_cannot_be_written_says_so_quietly(): void
+    {
+        $space = $this->spaceOf('u-1');
+        $session = $this->as('u-1')->postJson('/v1/admin/console/site_page/p1/sessions')->json('data.session.id');
+        $this->turn($space, $session, 'Make the hero darker', ['changed' => true]);
+        $this->ai->queueFailure(new AiUnavailableException('down'));
+
+        // A 200 the panel reads as "keep your own recap": a recap nobody asked for by name never errors.
+        $this->as('u-1')->postJson("/v1/admin/console/site_page/p1/sessions/{$session}/recap")->assertOk()
+            ->assertJsonPath('data.recap', null)->assertJsonPath('data.unavailable', true);
+    }
+
+    public function test_another_persons_session_has_no_recap(): void
+    {
+        $space = $this->spaceOf('u-1');
+        $session = $this->as('u-1')->postJson('/v1/admin/console/site_page/p1/sessions')->json('data.session.id');
+        $this->turn($space, $session, 'Make the hero darker', ['changed' => true]);
+
+        $this->as('u-2')->postJson("/v1/admin/console/site_page/p1/sessions/{$session}/recap")->assertNotFound();
+        $this->as('u-1')->postJson("/v1/admin/console/site_page/p2/sessions/{$session}/recap")->assertNotFound();
     }
 
     public function test_compaction_runs_ai_services_shared_prompt(): void

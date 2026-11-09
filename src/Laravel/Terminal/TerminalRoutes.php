@@ -37,6 +37,7 @@ final class TerminalRoutes
         Route::post($p.'/sessions', [$c, 'start'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.sessions.start');
         Route::get($p.'/sessions/{session}', [$c, 'open'])->where($where)->middleware('throttle:60,1')->name('assistant.terminal.sessions.open');
         Route::post($p.'/sessions/{session}/compact', [$c, 'compact'])->where($where)->middleware('throttle:10,1')->name('assistant.terminal.sessions.compact');
+        Route::post($p.'/sessions/{session}/recap', [$c, 'recap'])->where($where)->middleware('throttle:20,1')->name('assistant.terminal.sessions.recap');
         Route::post($p.'/sessions/{session}/rewind', [$c, 'rewind'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.sessions.rewind');
         Route::put($p.'/brief', [$c, 'brief'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.brief');
     }

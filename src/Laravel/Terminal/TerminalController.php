@@ -30,6 +30,7 @@ final class TerminalController extends Controller
         private readonly Spaces $spaces,
         private readonly TerminalSessions $sessions,
         private readonly SessionCompactor $compactor,
+        private readonly SessionRecap $recaps,
     ) {}
 
     /** The subject's console as it opens: the latest session (none yet: null), brief, size, history. */
@@ -80,6 +81,34 @@ final class TerminalController extends Controller
             $summary = $this->compactor->compact($space, $session, $ref, $data['focus'] ?? null, $data['range'] ?? 'older', $data['turn'] ?? null);
 
             return $this->console($space, $ref, $subject, $this->sessions->open($space, $session, $ref)) + ['compacted' => $summary !== null];
+        });
+    }
+
+    /**
+     * The AI recap of a session for a person coming back to it (1.60.0). `recap: null` with `unavailable`
+     * when it could not be written: the panel keeps the recap it drew from the turns, and a recap nobody
+     * asked for by name never shows an error.
+     */
+    public function recap(Request $request, string $kind, string $id, string $session): JsonResponse
+    {
+        $data = $request->validate(['away_minutes' => ['nullable', 'integer', 'min:0', 'max:525600']]);
+
+        return $this->on($request, $kind, $id, function (string $space, string $ref, TerminalSubject $subject) use ($data, $session) {
+            try {
+                return ['recap' => $this->recaps->recap($space, $session, $ref, $subject->label($ref), isset($data['away_minutes']) ? (int) $data['away_minutes'] : null), 'unavailable' => false];
+            } catch (AiRequestRefusedException $e) {
+                // Not this person's session, or not this subject's: a 404 like every other route.
+                if ($e->status === 404) {
+                    throw $e;
+                }
+                report($e);
+
+                return ['recap' => null, 'unavailable' => true];
+            } catch (Throwable $e) {
+                report($e);
+
+                return ['recap' => null, 'unavailable' => true];
+            }
         });
     }
 

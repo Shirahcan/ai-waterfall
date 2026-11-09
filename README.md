@@ -615,6 +615,7 @@ shared brief. The UI is `@shirahcan/ai-ui/terminal` (`AssistantTerminal`).
    events (`AiStreamEvent::reasoning()`); without it a stream is exactly as before.
 
 `/compact` runs ai-service's shared prompt `shared.terminal.compact`; no product template is needed.
+The recap a person sees on coming back (`POST .../sessions/{session}/recap`, `away_minutes`, 1.60.0) runs `shared.terminal.recap` through `SessionRecap`: a few first-person lines on what is being made, what changed, what is waiting and a next step, kept on the session per last turn (a second return with nothing new is free). It answers `recap: null, unavailable: true` when it cannot be written, so the panel keeps its own recap and never shows an error for something the person did not ask for by name.
 
 ### Level, effort and output size per call (1.59.0)
 
