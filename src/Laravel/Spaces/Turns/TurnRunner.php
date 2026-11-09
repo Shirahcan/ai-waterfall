@@ -17,8 +17,10 @@ use Illuminate\Http\Request;
 interface TurnRunner
 {
     /**
-     * The product's own fields (page context, attachments, its message length...). The kit has already
-     * checked `conversation_id` is a thread of the person's space.
+     * The product's own fields (attachments, its message length, any page detail beyond the route...). The
+     * kit has already checked `conversation_id` is a thread of the person's space, and adds the panel's page
+     * (`TurnPage::RULES`: route, entity, browser zone) to what this returns; `run()` reads it with
+     * `TurnPage::from($data)` (1.61).
      *
      * @return array<string, mixed> the validated data handed to `run()`
      */

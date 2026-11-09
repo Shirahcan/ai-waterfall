@@ -11,6 +11,7 @@ use PHPUnit\Framework\TestCase;
 use Shirahcan\AiClient\AiClient;
 use Shirahcan\AiClient\AiStreamEvent;
 use Shirahcan\AiClient\Chat\ChatTurnInput;
+use Shirahcan\AiClient\Chat\ChatTurnResult;
 use Shirahcan\AiClient\Chat\ToolRequestVerifier;
 use Shirahcan\AiClient\Exceptions\AiOverBudgetException;
 use Shirahcan\AiClient\Exceptions\AiUnavailableException;
@@ -201,5 +202,22 @@ class ChatTurnTest extends TestCase
 
         $this->expectException(AiUnavailableException::class);
         $fake->chatTurn($this->input());
+    }
+
+    /** 1.61: one reader for the engine's suggested next steps, so every product shows them (Mira showed none). */
+    public function test_the_answers_follow_ups_are_read_once_for_every_product(): void
+    {
+        $result = ChatTurnResult::fromFinal(['text' => 'You have 3 roles.', 'cards' => [
+            ['type' => 'data_table', 'payload' => []],
+            ['type' => ChatTurnResult::FOLLOW_UPS_CARD, 'payload' => ['items' => ['Show me the open ones', ' ', 'Show me the open ones', 'Which need me next?']]],
+        ]]);
+
+        $this->assertSame(['Show me the open ones', 'Which need me next?'], $result->followUps());
+        $this->assertSame(['engine' => true, 'follow_ups' => ['Show me the open ones', 'Which need me next?']], $result->followUpsMeta(['engine' => true]));
+
+        $none = ChatTurnResult::fromFinal(['text' => 'Hi.', 'cards' => []]);
+        $this->assertSame([], $none->followUps());
+        $this->assertNull($none->followUpsMeta());
+        $this->assertSame(['engine' => true], $none->followUpsMeta(['engine' => true]));
     }
 }

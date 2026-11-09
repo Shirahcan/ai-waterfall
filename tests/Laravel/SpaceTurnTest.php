@@ -10,6 +10,7 @@ use Shirahcan\AiClient\AiClientServiceProvider;
 use Shirahcan\AiClient\FakeAiClient;
 use Shirahcan\AiClient\Laravel\Spaces\Routes\AssistantRoutes;
 use Shirahcan\AiClient\Laravel\Spaces\Turns\TurnEvents;
+use Shirahcan\AiClient\Laravel\Spaces\Turns\TurnPage;
 use Shirahcan\AiClient\Laravel\Spaces\Turns\TurnRefused;
 use Shirahcan\AiClient\Laravel\Spaces\Turns\TurnResult;
 use Shirahcan\AiClient\Laravel\Spaces\Turns\TurnRunner;
@@ -24,6 +25,9 @@ class ScriptedTurnRunner implements TurnRunner
     /** @var list<string> */
     public static array $cancelled = [];
 
+    /** @var array<string, mixed> what run() was handed */
+    public static array $data = [];
+
     public function validate(Request $request): array
     {
         return $request->validate(['message' => ['required', 'string', 'max:2000']]);
@@ -37,6 +41,7 @@ class ScriptedTurnRunner implements TurnRunner
     public function run(Request $request, array $data, ?string $conversationId, string $turnId, TurnEvents $events): ?TurnResult
     {
         self::$answeredIn = $conversationId;
+        self::$data = $data;
         $events->token('Within ');
         $events->token('30 days.');
 
@@ -96,6 +101,7 @@ class SpaceTurnTest extends TestCase
         ScriptedTurnRunner::$mode = 'answer';
         ScriptedTurnRunner::$answeredIn = null;
         ScriptedTurnRunner::$cancelled = [];
+        ScriptedTurnRunner::$data = [];
     }
 
     /** @return list<array{0: string, 1: array<string, mixed>}> */
@@ -164,5 +170,33 @@ class SpaceTurnTest extends TestCase
 
         $this->app->offsetUnset(TurnRunner::class);
         $this->me()->postJson('/v1/assistant/space/chat/stream', ['message' => 'x'])->assertNotFound();
+    }
+
+    /**
+     * ⚠ 1.61: Mira's runner validated only the message, so the page the panel sent never reached her engine
+     * and she told an admin to look "at /". The kit now hands the panel's page to every runner.
+     */
+    public function test_the_panels_page_reaches_a_runner_that_validates_only_the_message(): void
+    {
+        $this->me()->post('/v1/assistant/space/chat/stream', ['message' => 'x', 'client_timezone' => 'Africa/Lagos',
+            'page_context' => ['route' => '/admin/dashboard', 'entity_type' => 'role', 'entity_id' => '42']])->assertOk()->streamedContent();
+
+        $page = TurnPage::from(ScriptedTurnRunner::$data);
+        $this->assertSame('x', ScriptedTurnRunner::$data['message']);
+        $this->assertSame('/admin/dashboard', $page->route);
+        $this->assertSame('role', $page->entityType);
+        $this->assertSame('42', $page->entityId);
+        $this->assertSame('Africa/Lagos', $page->timezone);
+
+        $this->me()->postJson('/v1/assistant/space/chat/stream', ['message' => 'x', 'page_context' => 'not-an-object'])->assertStatus(422);
+    }
+
+    public function test_a_page_is_a_path_and_nothing_else(): void
+    {
+        $this->assertSame('/', TurnPage::from([])->route);
+        $this->assertSame('/', TurnPage::from(['page_context' => ['route' => 'https://evil.example/x']])->route);
+        $this->assertSame('/employer/roles', TurnPage::from(['page_context' => ['route' => '/employer/roles?tab=open#top']])->route);
+        $this->assertNull(TurnPage::from(['client_timezone' => 'Mars/Olympus'])->timezone);
+        $this->assertNull(TurnPage::from(['page_context' => ['entity_id' => '  ']])->entityId);
     }
 }

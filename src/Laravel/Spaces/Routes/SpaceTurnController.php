@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use Shirahcan\AiClient\Exceptions\AiRequestRefusedException;
 use Shirahcan\AiClient\Exceptions\AiUnavailableException;
 use Shirahcan\AiClient\Laravel\Spaces\Turns\TurnEvents;
+use Shirahcan\AiClient\Laravel\Spaces\Turns\TurnPage;
 use Shirahcan\AiClient\Laravel\Spaces\Turns\TurnRefused;
 use Shirahcan\AiClient\Laravel\Spaces\Turns\TurnRunner;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -38,6 +39,9 @@ final class SpaceTurnController extends SpaceController
         /** @var TurnRunner $runner */
         $runner = app(TurnRunner::class);
         $data = $runner->validate($request);
+        // ⚠ The panel's page reaches EVERY runner (1.61, TurnPage): Mira's dropped it and answered "at /".
+        // A runner's own validated values win; it reads them with TurnPage::from($data).
+        $data += $request->validate(TurnPage::RULES);
 
         try {
             $space = $this->spaces->current($request);

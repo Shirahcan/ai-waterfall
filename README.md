@@ -654,6 +654,13 @@ all hang off it. A product adopts it in four steps:
    `ai-client.spaces.enabled`).
 3. **Bind what a turn does**: `Laravel\Spaces\Turns\TurnRunner` (validate, opening stages, run, cancel,
    failure sentence). Optionally bind `SpaceMessages` to keep your own message shape.
+   - **The page (1.61):** the kit validates the panel's `page_context` (route, entity) and
+     `client_timezone` itself and adds them to `run()`'s `$data`; read them with
+     `TurnPage::from($data)` and pass `->route` as `ChatTurnInput::$pageRoute`. Left out, the engine is
+     told every page is "/" (Mira told an admin to look "at /", 2026-11-09).
+   - **Follow-ups (1.61):** the engine writes every assistant's suggested next steps; put them on your
+     message with `$result->followUpsMeta($meta)` (`meta.follow_ups`, which the panel draws as buttons
+     under the latest answer and keeps on reopen). `$result->followUps()` is the plain list.
 4. **Mount the routes** in your authenticated group, and mount ai-ui's `AssistantSpacePanel` with
    `createAssistantSpaceClient({ base, fetcher })`:
 
