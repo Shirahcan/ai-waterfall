@@ -286,8 +286,9 @@ final class TerminalSessions
     }
 
     /**
-     * A question with its choices, the console's multiple-choice tool: `{text, options: [{label,
-     * description}], multi}`. A question with no choices is still a question (the person types).
+     * A question with its choices, the console's multiple-choice tool: `{text, header, options: [{label,
+     * description, recommended}], multi}`. A question with no choices is still a question (the person types).
+     * 1.59.1: `header` (its tab's name when there are several) and `recommended` (the assistant's pick).
      *
      * @return list<array{text: string, options: list<array{label: string, description: ?string}>, multi: bool}>
      */
@@ -308,11 +309,16 @@ final class TerminalSessions
                 $label = trim((string) (is_array($o) ? ($o['label'] ?? '') : $o));
                 if ($label !== '') {
                     $why = is_array($o) ? trim((string) ($o['description'] ?? '')) : '';
-                    $options[] = ['label' => self::clip($label, 80), 'description' => $why === '' ? null : self::clip($why, 240)];
+                    $options[] = ['label' => self::clip($label, 80), 'description' => $why === '' ? null : self::clip($why, 240)]
+                        // The choice the assistant recommends (1.59.1): kept only when it says so.
+                        + (is_array($o) && ($o['recommended'] ?? false) === true ? ['recommended' => true] : []);
                 }
             }
 
-            $out[] = ['text' => self::keep($text, 600), 'options' => $options, 'multi' => (bool) ($q['multi'] ?? false)];
+            $header = trim((string) ($q['header'] ?? ''));
+            $out[] = ['text' => self::keep($text, 600), 'options' => $options, 'multi' => (bool) ($q['multi'] ?? false)]
+                // A word or two naming the question: its tab when there are several (1.59.1).
+                + ($header !== '' ? ['header' => self::clip($header, 24)] : []);
         }
 
         return array_slice($out, 0, self::QUESTIONS_MAX);
