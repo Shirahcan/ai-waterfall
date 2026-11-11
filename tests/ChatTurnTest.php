@@ -88,6 +88,13 @@ class ChatTurnTest extends TestCase
         $this->assertArrayNotHasKey('attachments', (new ChatTurnInput('Hi', 'admin'))->toWire());
     }
 
+    public function test_a_turn_asks_for_its_whole_thread_only_when_the_product_says_so(): void
+    {
+        $this->assertSame('thread', (new ChatTurnInput('Hi', 'admin', context: ChatTurnInput::CONTEXT_THREAD))->toWire()['context']);
+        $this->assertArrayNotHasKey('context', (new ChatTurnInput('Hi', 'admin'))->toWire(), 'an older ai-service never sees the field');
+        $this->assertArrayNotHasKey('context', (new ChatTurnInput('Hi', 'admin', context: 'anything else'))->toWire());
+    }
+
     public function test_an_error_event_or_a_dropped_stream_throws(): void
     {
         $client = $this->client(

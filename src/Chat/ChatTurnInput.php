@@ -38,7 +38,15 @@ final class ChatTurnInput
         // The product's self-review gate (1.41): an ADMIN's assistant is offered review_conversation, to read
         // its own product's past turns and what their tools did. ai-service refuses it for anyone else.
         public readonly bool $selfReview = false,
+        // Which history the model reads (1.63): `window` (ai-service's latest messages, the default) or
+        // `thread` (the WHOLE thread to a budget, older turns folded into a running summary after the answer).
+        // The product's own gate chooses; an older ai-service ignores it.
+        public readonly string $context = self::CONTEXT_WINDOW,
     ) {}
+
+    public const CONTEXT_WINDOW = 'window';
+
+    public const CONTEXT_THREAD = 'thread';
 
     /** @return array<string, mixed> the `POST /v1/chat/turns` body */
     public function toWire(): array
@@ -67,6 +75,7 @@ final class ChatTurnInput
             'attachments'     => array_values($this->attachments),
             'report_gaps'     => $this->reportGaps ? true : null,
             'self_review'     => $this->selfReview ? true : null,
+            'context'         => $this->context === self::CONTEXT_THREAD ? self::CONTEXT_THREAD : null,
         ],static fn ($v) => $v !== null && $v !== '' && $v !== []);
     }
 }
