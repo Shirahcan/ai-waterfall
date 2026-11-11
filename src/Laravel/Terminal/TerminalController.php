@@ -178,6 +178,34 @@ final class TerminalController extends Controller
     }
 
     /**
+     * The person's specialization choice (1.64): a guide's key, `none` to follow no guide, or null to leave it
+     * to the subject (its own kind, or the assistant's pick). Only a subject that is a {@see SpecializedSubject}
+     * has one, and only a guide it offers may be chosen.
+     */
+    public function specialization(Request $request, string $kind, string $id): JsonResponse
+    {
+        $data = $request->validate(['key' => ['present', 'nullable', 'string', 'regex:'.TerminalSessions::SPECIALIZATION_PATTERN]]);
+
+        return $this->on($request, $kind, $id, function (string $space, string $ref, TerminalSubject $subject) use ($data, $request) {
+            if (! $subject instanceof SpecializedSubject) {
+                throw new AiRequestRefusedException('Not found', 404);
+            }
+
+            $key = $data['key'] ?? null;
+            $offered = array_column($subject->specializations($ref), 'key');
+            if ($key !== null && $key !== 'none' && ! in_array($key, $offered, true)) {
+                throw new AiRequestRefusedException('That specialization is not available here. Choose one from the list.', 422);
+            }
+
+            $user = $request->user();
+            $by = $user === null ? null : (string) ($user->name ?? $user->email ?? 'Someone');
+            $choice = $this->sessions->setSpecialization($ref, $key, $by);
+
+            return ['choice' => $choice, 'specialization' => $subject->specialization($ref, $choice), 'specializations' => $subject->specializations($ref)];
+        });
+    }
+
+    /**
      * Everything the panel draws, in one shape.
      *
      * @param  array{session: array<string, mixed>, turns: list<array<string, mixed>>}|null  $open
@@ -195,7 +223,24 @@ final class TerminalController extends Controller
             'brief' => $brief,
             'size' => SessionWindow::size($window, (int) ($sizing['design_chars'] ?? 0), (int) ($sizing['budget_tokens'] ?? 1)),
             'history' => $this->history($space, $ref, $open),
+            ...self::specializationOf($subject, $ref, $this->sessions),
         ];
+    }
+
+    /**
+     * What the console draws about specializations (1.64); nothing for a subject that has none.
+     *
+     * @return array<string, mixed>
+     */
+    private static function specializationOf(TerminalSubject $subject, string $ref, TerminalSessions $sessions): array
+    {
+        if (! $subject instanceof SpecializedSubject) {
+            return [];
+        }
+
+        $choice = $sessions->specializationChoice($ref);
+
+        return ['specialization' => $subject->specialization($ref, $choice), 'specializations' => $subject->specializations($ref), 'specialization_choice' => $choice];
     }
 
     /** The subject's asks, newest first, for the input's up-arrow: this session first, then the ones before. */

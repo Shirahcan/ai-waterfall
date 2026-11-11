@@ -52,6 +52,11 @@ final class TerminalSessions
 
     public const BRIEF_MAX = 4000;
 
+    /** The person's specialization choice for a subject (1.64): a guide's key, or `none` to turn guides off. */
+    public const SPECIALIZATION_KEY = 'terminal.specialization';
+
+    public const SPECIALIZATION_PATTERN = '/^(none|[a-z][a-z0-9-]{1,47})$/';
+
     /** Turns read when a session opens (the service's own page ceiling). */
     public const TURNS_MAX = 200;
 
@@ -260,6 +265,31 @@ final class TerminalSessions
 
         $value = ['text' => self::clip($text, self::BRIEF_MAX), 'by' => $by, 'at' => gmdate('Y-m-d\TH:i:s\Z')];
         $this->ai->memory()->put($subjectRef, self::BRIEF_KEY, $value);
+
+        return $value;
+    }
+
+    /** @return array{key: string, by: ?string, at: ?string}|null the person's choice, null when they left it to the page or the assistant */
+    public function specializationChoice(string $subjectRef): ?array
+    {
+        $value = $this->ai->memory()->all($subjectRef)[self::SPECIALIZATION_KEY]['value'] ?? null;
+
+        return is_array($value) && is_string($value['key'] ?? null) && preg_match(self::SPECIALIZATION_PATTERN, $value['key']) === 1
+            ? ['key' => $value['key'], 'by' => $value['by'] ?? null, 'at' => $value['at'] ?? null]
+            : null;
+    }
+
+    /** Set the person's choice (a key, or `none`); null removes it, leaving it to the page or the assistant again. */
+    public function setSpecialization(string $subjectRef, ?string $key, ?string $by): ?array
+    {
+        if ($key === null || $key === '') {
+            $this->ai->memory()->forget($subjectRef, self::SPECIALIZATION_KEY);
+
+            return null;
+        }
+
+        $value = ['key' => $key, 'by' => $by, 'at' => gmdate('Y-m-d\TH:i:s\Z')];
+        $this->ai->memory()->put($subjectRef, self::SPECIALIZATION_KEY, $value);
 
         return $value;
     }

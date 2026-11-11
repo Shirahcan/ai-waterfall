@@ -1545,6 +1545,15 @@ class AiClient
     }
 
     /**
+     * Specializations (1.64): named guides for one kind of output, owned by the product's admins. See
+     * `AiSpecializations`.
+     */
+    public function specializations(): AiSpecializations
+    {
+        return new AiSpecializations($this);
+    }
+
+    /**
      * What an assistant remembers about a person (P19e). Encrypted, scoped to this product's
      * trust key, and erased with the person's conversations.
      */

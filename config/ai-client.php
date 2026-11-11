@@ -82,6 +82,14 @@ return [
     ],
 
     /*
+    | Specializations (1.64): the product's catalogue (a class implementing
+    | Shirahcan\AiClient\Assistant\SpecializationCatalogue) that `ai:specializations-sync` publishes.
+    */
+    'specializations' => [
+        'catalogue' => null,
+    ],
+
+    /*
     | The assistant eval set `ai:eval` runs (1.31). Null = `tests/Eval/assistant_eval.json`.
     */
     'eval' => [

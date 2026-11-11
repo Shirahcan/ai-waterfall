@@ -824,6 +824,14 @@ class FakeAiClient extends AiClient
         return $this->spacesStore ??= new FakeAiSpaces();
     }
 
+    private ?FakeAiSpecializations $specializationsStore = null;
+
+    /** Specializations (1.64), in memory: one store per fake client, shared by every call. */
+    public function specializations(): FakeAiSpecializations
+    {
+        return $this->specializationsStore ??= new FakeAiSpecializations();
+    }
+
     private ?FakeAiMemoryStore $memoryStore = null;
 
     /** The memory store, faked: one instance per fake client, shared by every call. */

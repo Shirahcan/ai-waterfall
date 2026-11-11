@@ -65,6 +65,14 @@ final class ConsoleRoutes
         ['GET',    'assistants',                          'api/v1/assistants',            false, null],
         ['GET',    'assistants/{key}',                    'api/v1/assistants/{key}',      false, null],
         ['PUT',    'assistants/{key}',                    'api/v1/assistants/{key}',      false, 'updated_by'],
+        // Specializations (1.64): named guides for one kind of output; the vocabulary is the product's own
+        // (published by `ai:specializations-sync`, read-only here); a draft is a suggestion, never a save.
+        ['GET',    'specializations',                     'api/v1/specializations',       false, null],
+        ['POST',   'specializations/draft',               'api/v1/specializations/draft', false, null],
+        ['GET',    'specializations/{key}',               'api/v1/specializations/{key}', false, null],
+        ['PUT',    'specializations/{key}',               'api/v1/specializations/{key}', false, 'updated_by'],
+        ['DELETE', 'specializations/{key}',               'api/v1/specializations/{key}', false, null],
+        ['GET',    'specializations-vocabulary',          'api/v1/specializations-vocabulary', false, null],
 
         // Knowledge (read-only: the product's files are the authority) and feedback.
         ['GET',    'knowledge',                           'api/v1/knowledge/entries',     false, null],
