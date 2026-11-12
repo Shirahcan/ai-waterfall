@@ -16,9 +16,12 @@ use Shirahcan\AiClient\Exceptions\AiUnavailableException;
  */
 class SyncSpecializationsCommand extends Command
 {
+    /** Who the starting guides are written by: a guide still carrying it has not been changed by an admin. */
+    public const SEEDER = 'sync';
+
     protected $signature = 'ai:specializations-sync {--dry-run : list what would be sent, send nothing}';
 
-    protected $description = 'Publish this product\'s specialization vocabulary and seed its starting guides in ai-service';
+    protected $description = 'Publish this product\'s specialization vocabulary and seed (or refresh, while unedited) its starting guides in ai-service';
 
     public function handle(AiClient $ai): int
     {
@@ -49,12 +52,20 @@ class SyncSpecializationsCommand extends Command
         }
 
         try {
-            $ai->specializations()->publishVocabulary($vocabulary, 'sync');
+            $ai->specializations()->publishVocabulary($vocabulary, self::SEEDER);
             $created = 0;
             $kept = 0;
+            $refreshed = 0;
+            $unchanged = 0;
             foreach ($defaults as $key => $fields) {
-                $out = $ai->specializations()->seed((string) $key, $fields + ['updated_by' => 'sync']);
-                $out['kept'] ? $kept++ : $created++;
+                // The seeder's own name always: a catalogue cannot pass a guide off as an admin's.
+                $out = $ai->specializations()->seed((string) $key, ['updated_by' => self::SEEDER] + $fields);
+                match (true) {
+                    $out['kept'] => $kept++,
+                    $out['refreshed'] ?? false => $refreshed++,
+                    $out['created'] ?? false => $created++,
+                    default => $unchanged++,
+                };
             }
         } catch (AiUnavailableException $e) {
             $this->error('ai-service refused the specializations: '.$e->getMessage());
@@ -62,7 +73,7 @@ class SyncSpecializationsCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info("Specializations synced: vocabulary published, created={$created} kept={$kept}");
+        $this->info("Specializations synced: vocabulary published, created={$created} refreshed={$refreshed} unchanged={$unchanged} kept={$kept} (kept = changed by an admin)");
 
         return self::SUCCESS;
     }

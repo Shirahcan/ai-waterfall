@@ -86,12 +86,22 @@ class SpecializationsTest extends TestCase
 
     public function test_the_sync_publishes_the_vocabulary_then_seeds_and_never_overwrites_an_edit(): void
     {
-        $this->artisan('ai:specializations-sync')->expectsOutputToContain('created=2 kept=0')->assertSuccessful();
+        $this->artisan('ai:specializations-sync')->expectsOutputToContain('created=2 refreshed=0 unchanged=0 kept=0')->assertSuccessful();
         $this->assertSame(['page'], array_column($this->ai->specializations()->vocabulary()['surfaces'], 'key'));
 
-        $this->ai->specializations()->put('blog-post', ['instructions' => 'The admin\'s own words.']);
-        $this->artisan('ai:specializations-sync')->expectsOutputToContain('created=0 kept=2')->assertSuccessful();
+        // An admin's edit (the console stamps their name) is theirs; the untouched starting guide stays as it is.
+        $this->ai->specializations()->put('blog-post', ['instructions' => 'The admin\'s own words.', 'updated_by' => 'Bukky']);
+        $this->artisan('ai:specializations-sync')->expectsOutputToContain('created=0 refreshed=0 unchanged=1 kept=1')->assertSuccessful();
         $this->assertSame('The admin\'s own words.', $this->ai->specializations()->get('blog-post')['instructions']);
+    }
+
+    public function test_the_sync_refreshes_a_starting_guide_nobody_has_changed_when_the_products_words_improve(): void
+    {
+        $this->artisan('ai:specializations-sync')->assertSuccessful();
+        $this->app['config']->set('ai-client.specializations.catalogue', BetterCatalogue::class);
+
+        $this->artisan('ai:specializations-sync')->expectsOutputToContain('refreshed=1 unchanged=1')->assertSuccessful();
+        $this->assertSame('Any article: an answer, a story or an explainer.', $this->ai->specializations()->get('blog-post')['use_when']);
     }
 
     public function test_the_fake_refuses_what_the_service_refuses(): void
@@ -161,5 +171,16 @@ class TestCatalogue implements SpecializationCatalogue
             'blog-post'    => ['name' => 'Blog post', 'use_when' => 'An article.', 'surfaces' => ['page'], 'defaults_for' => ['blog_post'], 'data' => ['host_record']],
             'landing-page' => ['name' => 'Landing page', 'use_when' => 'One offer.', 'surfaces' => ['page']],
         ];
+    }
+}
+
+class BetterCatalogue extends TestCatalogue
+{
+    public function defaults(): array
+    {
+        $defaults = parent::defaults();
+        $defaults['blog-post']['use_when'] = 'Any article: an answer, a story or an explainer.';
+
+        return $defaults;
     }
 }

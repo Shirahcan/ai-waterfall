@@ -63,16 +63,17 @@ class AiSpecializations
     }
 
     /**
-     * The product's starting guide: created when absent, an admin's edit never overwritten.
+     * The product's starting guide: created when absent, refreshed while it is still the one this seeder wrote
+     * (same `updated_by`, nobody changed it since: 1.64.1), and an admin's edit never overwritten.
      *
      * @param  array<string, mixed>  $fields
-     * @return array{specialization: array<string, mixed>, kept: bool}
+     * @return array{specialization: array<string, mixed>, kept: bool, refreshed: bool, created: bool}
      */
     public function seed(string $key, array $fields): array
     {
         $out = $this->client->putJson('api/v1/specializations/'.rawurlencode($key), ['seed' => true] + $fields);
 
-        return ['specialization' => (array) ($out['specialization'] ?? []), 'kept' => (bool) ($out['kept'] ?? false)];
+        return ['specialization' => (array) ($out['specialization'] ?? []), 'kept' => (bool) ($out['kept'] ?? false), 'refreshed' => (bool) ($out['refreshed'] ?? false), 'created' => (bool) ($out['created'] ?? false)];
     }
 
     public function delete(string $key): bool

@@ -56,11 +56,24 @@ class FakeAiSpecializations extends AiSpecializations
     {
         $this->calls[] = ['seed', [$key, $fields]];
 
-        if (isset($this->guides[$key])) {
-            return ['specialization' => $this->guides[$key], 'kept' => true];
+        $existing = $this->guides[$key] ?? null;
+        if ($existing !== null) {
+            $seeder = $fields['updated_by'] ?? null;
+            if ($seeder === null || $seeder === '' || ($existing['updated_by'] ?? null) !== $seeder) {
+                return ['specialization' => $existing, 'kept' => true, 'refreshed' => false, 'created' => false];
+            }
+            $before = $existing;
+            $after = $this->write($key, $fields);
+            $words = ['name', 'use_when', 'surfaces', 'defaults_for', 'instructions', 'sections', 'data', 'checks', 'host_fields'];
+            $changed = array_intersect_key($before, array_flip($words)) != array_intersect_key($after, array_flip($words));
+            if (! $changed) {
+                $this->guides[$key] = $before;
+            }
+
+            return ['specialization' => $this->guides[$key], 'kept' => false, 'refreshed' => $changed, 'created' => false];
         }
 
-        return ['specialization' => $this->write($key, $fields), 'kept' => false];
+        return ['specialization' => $this->write($key, $fields), 'kept' => false, 'refreshed' => false, 'created' => true];
     }
 
     public function delete(string $key): bool
