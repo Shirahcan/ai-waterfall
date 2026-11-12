@@ -11,8 +11,9 @@ use Shirahcan\AiClient\Exceptions\AiUnavailableException;
  * Publish this product's specialization vocabulary and seed its starting guides (1.64). Run it after every
  * deploy, like `ai:tasks-sync` and `ai:assistant-sync`.
  *
- * ⚠ IT NEVER OVERWRITES AN ADMIN'S EDIT. The vocabulary is code and is replaced each run; a starting guide
- * is created only when its key is absent, so a guide an admin changed (or deleted and re-made) stays theirs.
+ * ⚠ IT NEVER OVERWRITES AN ADMIN'S EDIT. The vocabulary is code and is replaced each run; a starting guide is
+ * created when its key is absent and refreshed (1.64.1) only while it still carries the sync's own `updated_by`,
+ * so a guide an admin changed (or deleted and re-made) stays theirs.
  */
 class SyncSpecializationsCommand extends Command
 {
