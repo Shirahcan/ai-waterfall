@@ -72,6 +72,10 @@ final class ConsoleRoutes
         ['GET',    'specializations/{key}',               'api/v1/specializations/{key}', false, null],
         ['PUT',    'specializations/{key}',               'api/v1/specializations/{key}', false, 'updated_by'],
         ['DELETE', 'specializations/{key}',               'api/v1/specializations/{key}', false, null],
+        // 1.65: a guide's templates, the formats inside it ("Story" under "Blog post"), edited beside the guide.
+        ['GET',    'specializations/{key}/templates',     'api/v1/specializations/{key}/templates', false, null],
+        ['PUT',    'specializations/{key}/templates/{template}', 'api/v1/specializations/{key}/templates/{template}', false, 'updated_by'],
+        ['DELETE', 'specializations/{key}/templates/{template}', 'api/v1/specializations/{key}/templates/{template}', false, null],
         ['GET',    'specializations-vocabulary',          'api/v1/specializations-vocabulary', false, null],
 
         // Knowledge (read-only: the product's files are the authority) and feedback.

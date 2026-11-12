@@ -14,6 +14,9 @@ class FakeAiSpecializations extends AiSpecializations
     /** @var array<string, array<string, mixed>> key => guide in the service's wire shape */
     public array $guides = [];
 
+    /** @var array<string, array<string, array<string, mixed>>> guide key => template key => template (1.65) */
+    public array $templateRows = [];
+
     /** @var array<string, mixed>|null */
     public ?array $vocabularyRow = null;
 
@@ -28,12 +31,15 @@ class FakeAiSpecializations extends AiSpecializations
         // Deliberately no parent::__construct: there is no client and no network.
     }
 
-    public function list(?string $surface = null, bool $activeOnly = false): array
+    public function list(?string $surface = null, bool $activeOnly = false, bool $withTemplates = false): array
     {
-        $this->calls[] = ['list', [$surface, $activeOnly]];
+        $this->calls[] = ['list', [$surface, $activeOnly, $withTemplates]];
         $rows = array_values(array_filter($this->guides, static fn (array $g) => ($surface === null || in_array($surface, $g['surfaces'], true))
             && (! $activeOnly || $g['status'] === 'active')));
         usort($rows, static fn ($a, $b) => strcmp((string) $a['name'], (string) $b['name']));
+        if ($withTemplates) {
+            $rows = array_map(fn (array $g) => [...$g, 'templates' => $this->orderedTemplates((string) $g['key'], true)], $rows);
+        }
 
         return ['specializations' => $rows, 'vocabulary' => $this->vocabularyRow];
     }
@@ -80,7 +86,56 @@ class FakeAiSpecializations extends AiSpecializations
     {
         $this->calls[] = ['delete', [$key]];
         $had = isset($this->guides[$key]);
-        unset($this->guides[$key]);
+        unset($this->guides[$key], $this->templateRows[$key]);
+
+        return $had;
+    }
+
+    public function templates(string $guide, bool $activeOnly = false): array
+    {
+        $this->calls[] = ['templates', [$guide, $activeOnly]];
+        if (! isset($this->guides[$guide])) {
+            throw new AiRequestRefusedException("No specialization [{$guide}] for this product.", 404, 'unknown_specialization');
+        }
+
+        return $this->orderedTemplates($guide, $activeOnly);
+    }
+
+    public function putTemplate(string $guide, string $key, array $fields): array
+    {
+        $this->calls[] = ['putTemplate', [$guide, $key, $fields]];
+
+        return $this->writeTemplate($guide, $key, $fields);
+    }
+
+    public function seedTemplate(string $guide, string $key, array $fields): array
+    {
+        $this->calls[] = ['seedTemplate', [$guide, $key, $fields]];
+
+        $existing = $this->templateRows[$guide][$key] ?? null;
+        if ($existing !== null) {
+            $seeder = $fields['updated_by'] ?? null;
+            if ($seeder === null || $seeder === '' || ($existing['updated_by'] ?? null) !== $seeder) {
+                return ['template' => $existing, 'kept' => true, 'refreshed' => false, 'created' => false];
+            }
+            $after = $this->writeTemplate($guide, $key, $fields);
+            $words = array_flip(self::TEMPLATE_WORDS);
+            $changed = array_intersect_key($existing, $words) != array_intersect_key($after, $words);
+            if (! $changed) {
+                $this->templateRows[$guide][$key] = $existing;
+            }
+
+            return ['template' => $this->templateRows[$guide][$key], 'kept' => false, 'refreshed' => $changed, 'created' => false];
+        }
+
+        return ['template' => $this->writeTemplate($guide, $key, $fields), 'kept' => false, 'refreshed' => false, 'created' => true];
+    }
+
+    public function deleteTemplate(string $guide, string $key): bool
+    {
+        $this->calls[] = ['deleteTemplate', [$guide, $key]];
+        $had = isset($this->templateRows[$guide][$key]);
+        unset($this->templateRows[$guide][$key]);
 
         return $had;
     }
@@ -102,6 +157,58 @@ class FakeAiSpecializations extends AiSpecializations
         $this->calls[] = ['draft', [$description, $current]];
 
         return $this->draftAnswer;
+    }
+
+    /** The words a template is made of (the service's TEMPLATE_FIELDS). */
+    private const TEMPLATE_WORDS = ['name', 'group', 'use_when', 'example_titles', 'instructions', 'sections', 'design', 'checks', 'data', 'asks', 'starter', 'reminder', 'field_rules'];
+
+    /** @return list<array<string, mixed>> */
+    private function orderedTemplates(string $guide, bool $activeOnly): array
+    {
+        $rows = array_values(array_filter($this->templateRows[$guide] ?? [], static fn (array $t) => ! $activeOnly || $t['status'] === 'active'));
+        usort($rows, static fn ($a, $b) => [(int) $a['position'], (string) $a['name']] <=> [(int) $b['position'], (string) $b['name']]);
+
+        return $rows;
+    }
+
+    /**
+     * The service's refusals for a template: no such guide, a new one without a name, data outside the vocabulary,
+     * a field rule for a field the guide does not draft.
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array<string, mixed>
+     */
+    private function writeTemplate(string $guide, string $key, array $fields): array
+    {
+        $owner = $this->guides[$guide] ?? null;
+        if ($owner === null) {
+            throw new AiRequestRefusedException("No specialization [{$guide}] for this product.", 404, 'unknown_specialization');
+        }
+        $before = $this->templateRows[$guide][$key] ?? null;
+        if ($before === null && ! isset($fields['name'])) {
+            throw new AiRequestRefusedException('A new template needs its name.', 422, 'incomplete_template');
+        }
+        $data = array_column((array) ($this->vocabularyRow['data'] ?? []), 'key');
+        foreach ((array) ($fields['data'] ?? []) as $word) {
+            if (! in_array($word, $data, true)) {
+                throw new AiRequestRefusedException("[{$word}] is not data this product offers.", 422, 'unknown_vocabulary');
+            }
+        }
+        $drafted = array_column((array) ($owner['host_fields'] ?? []), 'field');
+        foreach (array_keys((array) ($fields['field_rules'] ?? [])) as $field) {
+            if (! in_array($field, $drafted, true)) {
+                throw new AiRequestRefusedException("[{$field}] is not a field {$owner['name']} drafts.", 422, 'unknown_vocabulary');
+            }
+        }
+
+        $template = array_replace($before ?? [
+            'key' => $key, 'guide' => $guide, 'name' => '', 'group' => '', 'use_when' => '', 'example_titles' => [], 'instructions' => '',
+            'sections' => [], 'design' => ['layout' => '', 'signature' => '', 'imagery' => ''], 'checks' => [], 'data' => null, 'asks' => [],
+            'starter' => '', 'reminder' => '', 'field_rules' => [], 'position' => 0, 'status' => 'active', 'version' => 0, 'updated_by' => null, 'updated_at' => null,
+        ], array_intersect_key($fields, array_flip([...self::TEMPLATE_WORDS, 'position', 'status', 'updated_by'])));
+        $template['version'] = (int) $template['version'] + 1;
+
+        return $this->templateRows[$guide][$key] = $template;
     }
 
     /** @param  array<string, mixed>  $fields */

@@ -26,9 +26,10 @@ class AiSpecializations
      *
      * @return array{specializations: list<array<string, mixed>>, vocabulary: ?array<string, mixed>}
      */
-    public function list(?string $surface = null, bool $activeOnly = false): array
+    public function list(?string $surface = null, bool $activeOnly = false, bool $withTemplates = false): array
     {
-        $query = array_filter(['surface' => $surface, 'status' => $activeOnly ? 'active' : null], static fn ($v) => $v !== null && $v !== '');
+        // 1.65: `$withTemplates` puts each guide's ACTIVE templates on it (`templates`), so one read serves both.
+        $query = array_filter(['surface' => $surface, 'status' => $activeOnly ? 'active' : null, 'with' => $withTemplates ? 'templates' : null], static fn ($v) => $v !== null && $v !== '');
         $out = $this->client->getJson('api/v1/specializations', $query);
 
         return [
@@ -87,6 +88,64 @@ class AiSpecializations
 
             throw $e;
         }
+    }
+
+    /**
+     * A guide's templates (1.65, owner 2026-11-12): the formats inside it ("Story", "How-to guide" under "Blog
+     * post"), in the picker's order. Each: `{key, guide, name, group, use_when, example_titles, instructions,
+     * sections: [{key, name, purpose, required, look_for, look}], design: {layout, signature, imagery}, checks
+     * (only what it sets), data (null = the guide's), asks: [{question, required, options}], starter, reminder,
+     * field_rules: {field: rule}, position, status, version, updated_by, updated_at}`.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function templates(string $guide, bool $activeOnly = false): array
+    {
+        $out = $this->client->getJson('api/v1/specializations/'.rawurlencode($guide).'/templates', $activeOnly ? ['status' => 'active'] : []);
+
+        return array_values((array) ($out['templates'] ?? []));
+    }
+
+    /**
+     * Create the template under its guide, or change the fields given.
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array<string, mixed>
+     */
+    public function putTemplate(string $guide, string $key, array $fields): array
+    {
+        return (array) ($this->client->putJson($this->templatePath($guide, $key), $fields)['template'] ?? []);
+    }
+
+    /**
+     * The product's starting template: the same rule as {@see seed()}, per template.
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array{template: array<string, mixed>, kept: bool, refreshed: bool, created: bool}
+     */
+    public function seedTemplate(string $guide, string $key, array $fields): array
+    {
+        $out = $this->client->putJson($this->templatePath($guide, $key), ['seed' => true] + $fields);
+
+        return ['template' => (array) ($out['template'] ?? []), 'kept' => (bool) ($out['kept'] ?? false), 'refreshed' => (bool) ($out['refreshed'] ?? false), 'created' => (bool) ($out['created'] ?? false)];
+    }
+
+    public function deleteTemplate(string $guide, string $key): bool
+    {
+        try {
+            return (bool) ($this->client->deleteJson($this->templatePath($guide, $key))['deleted'] ?? false);
+        } catch (AiRequestRefusedException $e) {
+            if ($e->status === 404) {
+                return false;
+            }
+
+            throw $e;
+        }
+    }
+
+    private function templatePath(string $guide, string $key): string
+    {
+        return 'api/v1/specializations/'.rawurlencode($guide).'/templates/'.rawurlencode($key);
     }
 
     /** @return array<string, mixed>|null */

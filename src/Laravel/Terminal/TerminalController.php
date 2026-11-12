@@ -201,8 +201,57 @@ final class TerminalController extends Controller
             $by = $user === null ? null : (string) ($user->name ?? $user->email ?? 'Someone');
             $choice = $this->sessions->setSpecialization($ref, $key, $by);
 
-            return ['choice' => $choice, 'specialization' => $subject->specialization($ref, $choice), 'specializations' => $subject->specializations($ref)];
+            // 1.65: a new guide brings its own templates, so the console redraws them in the same answer.
+            return ['choice' => $choice, 'specialization' => $subject->specialization($ref, $choice), 'specializations' => $subject->specializations($ref), ...self::templateOf($subject, $ref, $this->sessions)];
         });
+    }
+
+    /**
+     * The template this subject follows inside its guide (1.65): a template's key, `none` for the guide's own
+     * sections, or null to leave it to the assistant's pick again. Only a {@see TemplatedSubject} has one, only
+     * while a guide applies, and only a template it offers may be chosen.
+     */
+    public function template(Request $request, string $kind, string $id): JsonResponse
+    {
+        $data = $request->validate(['key' => ['present', 'nullable', 'string', 'regex:'.TerminalSessions::TEMPLATE_PATTERN]]);
+
+        return $this->on($request, $kind, $id, function (string $space, string $ref, TerminalSubject $subject) use ($data, $request) {
+            if (! $subject instanceof TemplatedSubject) {
+                throw new AiRequestRefusedException('Not found', 404);
+            }
+
+            $key = $data['key'] ?? null;
+            $guide = $subject->templateGuide($ref);
+            if ($key !== null && $guide === null) {
+                throw new AiRequestRefusedException('No guide applies here, so there is no template to choose. Choose a guide first.', 422);
+            }
+            $offered = array_column($subject->templates($ref), 'key');
+            if ($key !== null && $key !== 'none' && ! in_array($key, $offered, true)) {
+                throw new AiRequestRefusedException('That template is not available here. Choose one from the list.', 422);
+            }
+
+            $user = $request->user();
+            $by = $user === null ? null : (string) ($user->name ?? $user->email ?? 'Someone');
+            $choice = $this->sessions->setTemplate($ref, $guide, $key, $by, 'person');
+
+            return ['choice' => $choice, 'template' => $subject->template($ref, $choice), 'templates' => $subject->templates($ref)];
+        });
+    }
+
+    /**
+     * What the console draws about templates (1.65); nothing for a subject that offers none.
+     *
+     * @return array<string, mixed>
+     */
+    private static function templateOf(TerminalSubject $subject, string $ref, TerminalSessions $sessions): array
+    {
+        if (! $subject instanceof TemplatedSubject) {
+            return [];
+        }
+
+        $choice = $sessions->templateChoice($ref);
+
+        return ['template' => $subject->template($ref, $choice), 'templates' => $subject->templates($ref), 'template_choice' => $choice];
     }
 
     /**
@@ -240,7 +289,7 @@ final class TerminalController extends Controller
 
         $choice = $sessions->specializationChoice($ref);
 
-        return ['specialization' => $subject->specialization($ref, $choice), 'specializations' => $subject->specializations($ref), 'specialization_choice' => $choice];
+        return ['specialization' => $subject->specialization($ref, $choice), 'specializations' => $subject->specializations($ref), 'specialization_choice' => $choice, ...self::templateOf($subject, $ref, $sessions)];
     }
 
     /** The subject's asks, newest first, for the input's up-arrow: this session first, then the ones before. */

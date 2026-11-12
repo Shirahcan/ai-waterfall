@@ -57,6 +57,17 @@ final class TerminalSessions
 
     public const SPECIALIZATION_PATTERN = '/^(none|[a-z][a-z0-9-]{1,47})$/';
 
+    /**
+     * The template a subject follows inside its guide (1.65): `{guide, key, by, at, source}`, its OWN slot so the
+     * guide choice keeps its meaning. `source` is `person` (they chose it) or `porter` (the assistant picked it for
+     * this subject and it is remembered, so a later rebuild keeps the format); `none` turns templates off.
+     */
+    public const TEMPLATE_KEY = 'terminal.template';
+
+    public const TEMPLATE_PATTERN = '/^(none|[a-z][a-z0-9-]{1,47})$/';
+
+    public const TEMPLATE_SOURCES = ['person', 'porter'];
+
     /** Turns read when a session opens (the service's own page ceiling). */
     public const TURNS_MAX = 200;
 
@@ -290,6 +301,37 @@ final class TerminalSessions
 
         $value = ['key' => $key, 'by' => $by, 'at' => gmdate('Y-m-d\TH:i:s\Z')];
         $this->ai->memory()->put($subjectRef, self::SPECIALIZATION_KEY, $value);
+
+        return $value;
+    }
+
+    /** @return array{guide: string, key: string, by: ?string, at: ?string, source: string}|null the template chosen (or remembered) for a subject */
+    public function templateChoice(string $subjectRef): ?array
+    {
+        $value = $this->ai->memory()->all($subjectRef)[self::TEMPLATE_KEY]['value'] ?? null;
+
+        return is_array($value) && is_string($value['key'] ?? null) && preg_match(self::TEMPLATE_PATTERN, $value['key']) === 1
+            && is_string($value['guide'] ?? null) && $value['guide'] !== ''
+            ? ['guide' => $value['guide'], 'key' => $value['key'], 'by' => $value['by'] ?? null, 'at' => $value['at'] ?? null,
+                'source' => in_array($value['source'] ?? null, self::TEMPLATE_SOURCES, true) ? $value['source'] : 'person']
+            : null;
+    }
+
+    /**
+     * Set the template for a subject inside `$guide` (a key, or `none`); a null key removes it, leaving the pick to
+     * the assistant again. `$source` says who chose it: the person, or the assistant remembering its own pick.
+     */
+    public function setTemplate(string $subjectRef, ?string $guide, ?string $key, ?string $by, string $source = 'person'): ?array
+    {
+        if ($key === null || $key === '' || $guide === null || $guide === '') {
+            $this->ai->memory()->forget($subjectRef, self::TEMPLATE_KEY);
+
+            return null;
+        }
+
+        $value = ['guide' => $guide, 'key' => $key, 'by' => $by, 'at' => gmdate('Y-m-d\TH:i:s\Z'),
+            'source' => in_array($source, self::TEMPLATE_SOURCES, true) ? $source : 'person'];
+        $this->ai->memory()->put($subjectRef, self::TEMPLATE_KEY, $value);
 
         return $value;
     }

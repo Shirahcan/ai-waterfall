@@ -5,6 +5,7 @@ namespace Shirahcan\AiClient\Laravel\Assistant;
 use Illuminate\Console\Command;
 use Shirahcan\AiClient\AiClient;
 use Shirahcan\AiClient\Assistant\SpecializationCatalogue;
+use Shirahcan\AiClient\Assistant\TemplateCatalogue;
 use Shirahcan\AiClient\Exceptions\AiUnavailableException;
 
 /**
@@ -42,31 +43,33 @@ class SyncSpecializationsCommand extends Command
 
         $vocabulary = $catalogue->vocabulary();
         $defaults = $catalogue->defaults();
+        // 1.65: the formats inside each guide, when the catalogue offers them.
+        $templates = $catalogue instanceof TemplateCatalogue ? $catalogue->templates() : [];
         $this->line('  vocabulary: '.count($vocabulary['surfaces'] ?? []).' places, '.count($vocabulary['hosts'] ?? []).' kinds of page, '.count($vocabulary['data'] ?? []).' data sources');
         foreach (array_keys($defaults) as $key) {
             $this->line("  guide: {$key}");
         }
+        foreach ($templates as $guide => $rows) {
+            foreach (array_keys($rows) as $key) {
+                $this->line("  template: {$guide}/{$key}");
+            }
+        }
         if ($this->option('dry-run')) {
-            $this->info('Would publish the vocabulary and seed '.count($defaults).' guides.');
+            $this->info('Would publish the vocabulary and seed '.count($defaults).' guides and '.array_sum(array_map('count', $templates)).' templates.');
 
             return self::SUCCESS;
         }
 
+        $guideCounts = ['created' => 0, 'refreshed' => 0, 'unchanged' => 0, 'kept' => 0];
+        $templateCounts = $guideCounts;
+        $seededGuides = [];
         try {
             $ai->specializations()->publishVocabulary($vocabulary, self::SEEDER);
-            $created = 0;
-            $kept = 0;
-            $refreshed = 0;
-            $unchanged = 0;
             foreach ($defaults as $key => $fields) {
                 // The seeder's own name always: a catalogue cannot pass a guide off as an admin's.
                 $out = $ai->specializations()->seed((string) $key, ['updated_by' => self::SEEDER] + $fields);
-                match (true) {
-                    $out['kept'] => $kept++,
-                    $out['refreshed'] ?? false => $refreshed++,
-                    $out['created'] ?? false => $created++,
-                    default => $unchanged++,
-                };
+                $guideCounts[self::outcome($out)]++;
+                $seededGuides[] = (string) $key;
             }
         } catch (AiUnavailableException $e) {
             $this->error('ai-service refused the specializations: '.$e->getMessage());
@@ -74,8 +77,36 @@ class SyncSpecializationsCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info("Specializations synced: vocabulary published, created={$created} refreshed={$refreshed} unchanged={$unchanged} kept={$kept} (kept = changed by an admin)");
+        foreach ($templates as $guide => $rows) {
+            $position = 0;
+            foreach ($rows as $key => $fields) {
+                $position++;
+                try {
+                    $out = $ai->specializations()->seedTemplate((string) $guide, (string) $key, ['updated_by' => self::SEEDER, 'position' => $position] + $fields);
+                    $templateCounts[self::outcome($out)]++;
+                } catch (AiUnavailableException $e) {
+                    // One refused template (or a guide an admin deleted) never stops the rest.
+                    $this->warn("  template {$guide}/{$key} was refused: ".$e->getMessage().(in_array((string) $guide, $seededGuides, true) ? '' : ' (its guide is not one this product seeds)'));
+                }
+            }
+        }
+
+        $this->info("Specializations synced: vocabulary published, created={$guideCounts['created']} refreshed={$guideCounts['refreshed']} unchanged={$guideCounts['unchanged']} kept={$guideCounts['kept']} (kept = changed by an admin)");
+        if ($templates !== []) {
+            $this->info("Templates synced: created={$templateCounts['created']} refreshed={$templateCounts['refreshed']} unchanged={$templateCounts['unchanged']} kept={$templateCounts['kept']}");
+        }
 
         return self::SUCCESS;
+    }
+
+    /** @param  array{kept: bool, refreshed?: bool, created?: bool}  $out */
+    private static function outcome(array $out): string
+    {
+        return match (true) {
+            $out['kept'] => 'kept',
+            $out['refreshed'] ?? false => 'refreshed',
+            $out['created'] ?? false => 'created',
+            default => 'unchanged',
+        };
     }
 }
