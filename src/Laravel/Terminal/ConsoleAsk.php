@@ -50,7 +50,6 @@ abstract class ConsoleAsk
         protected readonly SessionCompactor $compactor,
     ) {}
 
-    /** How many tokens the session window may fill beside the subject (the product's console budget). */
     /**
      * The subject this ask's console serves (1.72.0). The bound `TerminalSubject` by default; a product with a second
      * console surface (Portify's email templates) overrides it in that surface's subclass.
@@ -60,6 +59,7 @@ abstract class ConsoleAsk
         return app(TerminalSubject::class);
     }
 
+    /** How many tokens the session window may fill beside the subject (the product's console budget). */
     abstract protected function budget(): int;
 
     /**
