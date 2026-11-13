@@ -81,6 +81,11 @@ class ConsoleAskTest extends TestCase
             {
                 return $this->test->recordPoint(compact('kind', 'id', 'design', 'sessionId', 'userId'));
             }
+
+            public function point(string $kind, string $id, string $pointId): ?array
+            {
+                return null;
+            }
         };
 
         return new class($this->app->make(TerminalSessions::class), $store, $this->app->make(SessionCompactor::class)) extends ConsoleAsk

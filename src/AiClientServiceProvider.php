@@ -112,5 +112,11 @@ class AiClientServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/../config/ai-client.php' => config_path('ai-client.php'),
         ], 'ai-client-config');
+
+        // The console's default rewind-point store (1.71.0): published on request only, never auto-loaded, so a
+        // product with its own store (Portify, growth-service) never gets the table.
+        $this->publishes([
+            __DIR__.'/../database/migrations/2026_11_13_000001_create_console_checkpoints_table.php' => database_path('migrations/2026_11_13_000001_create_console_checkpoints_table.php'),
+        ], 'ai-client-console');
     }
 }
