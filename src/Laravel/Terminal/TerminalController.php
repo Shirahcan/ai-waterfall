@@ -353,14 +353,30 @@ final class TerminalController extends Controller
         ];
     }
 
+    /**
+     * The subject this request's console serves (1.72.0): the one its mount names (`TerminalRoutes::mount(...,
+     * $subject)`), else the product's bound `TerminalSubject`, else none (every route 404s).
+     */
+    public static function subjectFor(Request $request, Container $app): ?TerminalSubject
+    {
+        $class = $request->route()?->defaults[TerminalRoutes::SUBJECT] ?? null;
+
+        if (is_string($class) && $class !== '') {
+            return $app->make($class);
+        }
+
+        return $app->bound(TerminalSubject::class) ? $app->make(TerminalSubject::class) : null;
+    }
+
     private function on(Request $request, string $kind, string $id, Closure $work): JsonResponse
     {
-        if (! $this->app->bound(TerminalSubject::class)) {
+        $subject = self::subjectFor($request, $this->app);
+
+        if ($subject === null) {
             return $this->fail('Not found', 404);
         }
 
         try {
-            $subject = $this->app->make(TerminalSubject::class);
             $ref = $subject->ref($request, $kind, $id);
             if ($ref === null) {
                 return $this->fail('Not found', 404);

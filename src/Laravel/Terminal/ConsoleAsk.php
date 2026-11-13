@@ -51,6 +51,15 @@ abstract class ConsoleAsk
     ) {}
 
     /** How many tokens the session window may fill beside the subject (the product's console budget). */
+    /**
+     * The subject this ask's console serves (1.72.0). The bound `TerminalSubject` by default; a product with a second
+     * console surface (Portify's email templates) overrides it in that surface's subclass.
+     */
+    protected function subject(): TerminalSubject
+    {
+        return app(TerminalSubject::class);
+    }
+
     abstract protected function budget(): int;
 
     /**
@@ -102,7 +111,7 @@ abstract class ConsoleAsk
             'answers' => is_array($answers) ? array_values(array_filter($answers, 'is_array')) : [],
         ];
 
-        $ref = app(TerminalSubject::class)->ref($request, $kind, $id);
+        $ref = $this->subject()->ref($request, $kind, $id);
         $space = $ref === null ? null : app(Spaces::class)->current($request);
 
         if ($ref === null || $space === null) {

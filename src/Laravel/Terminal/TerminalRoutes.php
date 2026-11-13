@@ -25,28 +25,53 @@ final class TerminalRoutes
 
     private const ID = '[A-Za-z0-9_-]{1,64}';
 
-    public static function mount(string $prefix = 'console'): void
+    /** The route default that names a mount's own subject class (1.72.0). */
+    public const SUBJECT = 'terminal_subject';
+
+    /**
+     * Mount the console's routes under `$prefix`. With no subject they serve the bound `TerminalSubject` (one console
+     * surface per product, as before). Since 1.72.0 a product with SEVERAL console surfaces in different areas mounts
+     * each with its own subject class and a name (`as`), so two mounts never share a route name:
+     *
+     *   TerminalRoutes::mount('console');                                          // assistant.terminal.*
+     *   TerminalRoutes::mount('console', EmailTemplateConsoleSubject::class, 'email'); // assistant.terminal.email.*
+     *
+     * @param  class-string<TerminalSubject>|null  $subject
+     */
+    public static function mount(string $prefix = 'console', ?string $subject = null, ?string $as = null): void
     {
         $p = trim($prefix, '/');
         $p = ($p === '' ? '' : $p.'/').'{kind}/{id}';
         $where = ['kind' => self::KIND, 'id' => self::ID, 'session' => self::UUID];
         $c = TerminalController::class;
+        $names = 'assistant.terminal.'.($as !== null && $as !== '' ? trim($as, '.').'.' : '');
 
-        Route::get($p, [$c, 'show'])->where($where)->middleware('throttle:60,1')->name('assistant.terminal.show');
-        Route::get($p.'/sessions', [$c, 'index'])->where($where)->middleware('throttle:60,1')->name('assistant.terminal.sessions.index');
-        Route::post($p.'/sessions', [$c, 'start'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.sessions.start');
-        Route::get($p.'/sessions/{session}', [$c, 'open'])->where($where)->middleware('throttle:60,1')->name('assistant.terminal.sessions.open');
-        Route::post($p.'/sessions/{session}/compact', [$c, 'compact'])->where($where)->middleware('throttle:10,1')->name('assistant.terminal.sessions.compact');
-        Route::post($p.'/sessions/{session}/recap', [$c, 'recap'])->where($where)->middleware('throttle:20,1')->name('assistant.terminal.sessions.recap');
-        Route::post($p.'/sessions/{session}/rewind', [$c, 'rewind'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.sessions.rewind');
-        Route::put($p.'/brief', [$c, 'brief'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.brief');
-        // 1.64.0: the person's specialization choice for this subject (a guide, none, or back to the subject's own).
-        Route::put($p.'/specialization', [$c, 'specialization'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.specialization');
-        // 1.65.0: the template this subject follows inside its guide (a template, none, or back to the assistant's pick).
-        Route::put($p.'/template', [$c, 'template'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.template');
-        // 1.62.0: what a session has cost (/cost), and the person's own commands (saved asks).
-        Route::get($p.'/sessions/{session}/usage', [$c, 'usage'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.sessions.usage');
-        Route::get($p.'/commands', [$c, 'commands'])->where($where)->middleware('throttle:60,1')->name('assistant.terminal.commands');
-        Route::put($p.'/commands', [$c, 'saveCommands'])->where($where)->middleware('throttle:30,1')->name('assistant.terminal.commands.save');
+        // verb, path, action, per-minute limit, name
+        $routes = [
+            ['get', '', 'show', 60, 'show'],
+            ['get', '/sessions', 'index', 60, 'sessions.index'],
+            ['post', '/sessions', 'start', 30, 'sessions.start'],
+            ['get', '/sessions/{session}', 'open', 60, 'sessions.open'],
+            ['post', '/sessions/{session}/compact', 'compact', 10, 'sessions.compact'],
+            ['post', '/sessions/{session}/recap', 'recap', 20, 'sessions.recap'],
+            ['post', '/sessions/{session}/rewind', 'rewind', 30, 'sessions.rewind'],
+            ['put', '/brief', 'brief', 30, 'brief'],
+            // 1.64.0: the person's specialization choice for this subject (a guide, none, or back to the subject's own).
+            ['put', '/specialization', 'specialization', 30, 'specialization'],
+            // 1.65.0: the template this subject follows inside its guide (a template, none, or back to the assistant's pick).
+            ['put', '/template', 'template', 30, 'template'],
+            // 1.62.0: what a session has cost (/cost), and the person's own commands (saved asks).
+            ['get', '/sessions/{session}/usage', 'usage', 30, 'sessions.usage'],
+            ['get', '/commands', 'commands', 60, 'commands'],
+            ['put', '/commands', 'saveCommands', 30, 'commands.save'],
+        ];
+
+        foreach ($routes as [$verb, $path, $action, $limit, $name]) {
+            $route = Route::{$verb}($p.$path, [$c, $action])->where($where)->middleware("throttle:{$limit},1")->name($names.$name);
+
+            if ($subject !== null) {
+                $route->defaults(self::SUBJECT, $subject);
+            }
+        }
     }
 }
