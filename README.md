@@ -633,7 +633,7 @@ shared brief. The UI is `@shirahcan/ai-ui/terminal` (`AssistantTerminal`).
 
 1. Bind what the console works on: `$this->app->bind(TerminalSubject::class, MySubject::class);`
    (`ref()` returns null for anything the person may not edit, so every route answers 404).
-2. Mount the routes in the authenticated group: `TerminalRoutes::mount('console');`.
+2. Mount the routes in the authenticated group: `TerminalRoutes::mount('console');`. A product with SEVERAL console surfaces in different areas (1.72.0) mounts each with its own subject class and name: `TerminalRoutes::mount('console', EmailTemplateConsoleSubject::class, 'email')` (routes `assistant.terminal.email.*`); that surface's `ConsoleAsk` subclass overrides `subject()`.
 3. In the product's own ask route: `TerminalSessions::appendAsk()` before the work, build the prompt with
    `SessionWindow::build()` (brief, summary, nearby lines, the last pairs verbatim with replies, steps and
    outcomes), run `SessionCompactor::compact()` first when `SessionWindow::needsCompaction()`, and record
