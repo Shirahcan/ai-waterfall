@@ -375,6 +375,23 @@ class FakeAiAdmin extends AiAdmin
         return $this->toolHosts[$product];
     }
 
+    /** @var array<string, array{product: string, hosts: list<string>, set_by: ?string}> */
+    private array $publicHosts = [];
+
+    public function publicHosts(): array
+    {
+        return array_values($this->publicHosts);
+    }
+
+    public function setPublicHosts(string $product, array $hosts, ?string $setBy = null): array
+    {
+        $hosts = array_values(array_unique(array_map('strtolower', $hosts)));
+        $this->publicHosts[$product] = ['product' => $product, 'hosts' => $hosts, 'set_by' => $setBy];
+        $this->writes[] = ['public_hosts.set', $product, $hosts, $setBy];
+
+        return $hosts;
+    }
+
     /**
      * Shipped defaults a test can seed, so "undecided" is listed like the real service.
      *

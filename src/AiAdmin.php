@@ -442,6 +442,30 @@ class AiAdmin
     }
 
     /**
+     * The hosts each product's public pages live on: the only ones render()->snapshot() draws for it (1.70.0).
+     *
+     * @return list<array{product: string, hosts: list<string>, set_by: ?string}>
+     */
+    public function publicHosts(): array
+    {
+        return array_values((array) ($this->client->getJson('api/v1/admin/public-hosts')['hosts'] ?? []));
+    }
+
+    /**
+     * Replace a product's whole list of public hosts (bare host names, e.g. `portify.shirah.co`). A host left out
+     * stops being drawable.
+     *
+     * @param  list<string>  $hosts
+     * @return list<string> the hosts as now stored
+     */
+    public function setPublicHosts(string $product, array $hosts, ?string $setBy = null): array
+    {
+        $body = array_filter(['product' => $product, 'hosts' => array_values($hosts), 'set_by' => $setBy], static fn ($v) => $v !== null);
+
+        return array_values((array) ($this->client->putJson('api/v1/admin/public-hosts', $body)['hosts'] ?? []));
+    }
+
+    /**
      * Remove a price set by mistake; the shipped default takes over again.
      *
      * @return array{rate: array<string, mixed>, deleted: bool}

@@ -1267,6 +1267,12 @@ class AiClient
         return new AiResearch($this);
     }
 
+    /** Pictures of the product's own pages: social cards (1.70.0, shared program E2d). */
+    public function render(): AiRender
+    {
+        return new AiRender($this);
+    }
+
     /**
      * Speech to text through the vault (service P20f2, 2026-10-24).
      *

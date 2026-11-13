@@ -121,6 +121,33 @@ estate's internal network from outside. The reason is in the service's log.
 generation walk. Keys live in the vault, not in your `.env`, and the bench is shared - so the
 first exhausted search key protects every product.
 
+### Pictures of your own pages: social cards (1.70.0)
+
+```php
+$shot = $ai->render()->snapshot('https://portify.shirah.co/share-card/abc', waitFor: '[data-card-ready="true"]');
+// 1200x630 under 300 KB by default; PNG when it fits, else JPEG stepped down
+if ($shot->ok()) { Storage::put("cards/abc.{$shot->extension()}", $shot->bytes); }
+elseif ($shot->retryable()) { /* busy or no browser: keep the last card, try later */ }
+else { report($shot->message); /* host_not_registered, not_ready, too_large: fix the setup */ }
+```
+
+⚠ **Only your own public hosts are drawn.** An admin registers them once per product:
+`$ai->admin()->setPublicHosts('portify', ['portify.shirah.co'])`. A product key cannot point the
+service's browser at anyone else's site.
+
+⚠ **Give the page a ready mark.** Without `waitFor`, the picture may catch the page still loading.
+
+### How a link will unfurl: `SharePreviewProbe` (1.70.0)
+
+```php
+$report = (new SharePreviewProbe(fn ($url, $ua, $max) => $myGuardedFetch($url, $ua, $max)))->probe($url);
+$report['findings'];   // e.g. "The image is 418 KB. WhatsApp drops preview images over about 300 KB..."
+```
+
+It reads the page as Facebook, LinkedIn and X do: the share tags, the image (address, status, bytes,
+size, ratio) and robots.txt for the image. ⚠ **Your product fetches**, through its own network guard;
+the kit has none and returns tag values and findings, never raw HTML.
+
 ### A voice, and whose question it was
 
 ```php

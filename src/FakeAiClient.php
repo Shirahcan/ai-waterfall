@@ -686,6 +686,39 @@ class FakeAiClient extends AiClient
         return new FakeAiResearch($this);
     }
 
+    /** @var array<string, RenderSnapshot> snapshots by URL (1.70.0) */
+    private array $snapshots = [];
+
+    /** @var list<array{url: string, width: int, height: int, wait_for: ?string, max_bytes: int}> */
+    private array $snapshotCalls = [];
+
+    /** The picture render()->snapshot() answers for this URL; an unregistered URL answers `host_not_registered`. */
+    public function queueSnapshot(string $url, RenderSnapshot $snapshot): static
+    {
+        $this->snapshots[$url] = $snapshot;
+
+        return $this;
+    }
+
+    /** @internal for FakeAiRender */
+    public function snapshotFor(string $url, int $width, int $height, ?string $waitFor, int $maxBytes): RenderSnapshot
+    {
+        $this->snapshotCalls[] = ['url' => $url, 'width' => $width, 'height' => $height, 'wait_for' => $waitFor, 'max_bytes' => $maxBytes];
+
+        return $this->snapshots[$url] ?? RenderSnapshot::failed('host_not_registered', 'No snapshot queued for '.$url.' in the fake.');
+    }
+
+    /** @return list<array{url: string, width: int, height: int, wait_for: ?string, max_bytes: int}> */
+    public function snapshotCalls(): array
+    {
+        return $this->snapshotCalls;
+    }
+
+    public function render(): AiRender
+    {
+        return new FakeAiRender($this);
+    }
+
     /**
      * Record the bag on the SHARED log, then behave exactly as the real client
      * does by returning a clone.
