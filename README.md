@@ -641,6 +641,12 @@ shared brief. The UI is `@shirahcan/ai-ui/terminal` (`AssistantTerminal`).
 4. Thinking mode: `runTaskStream(..., reasoning: true)` streams the model's reasoning as `reasoning`
    events (`AiStreamEvent::reasoning()`); without it a stream is exactly as before.
 
+A document's SHARE CARD is its own console subject (1.73.0, shared program E4c): extend `CardSubject` (the product
+says only who may open which document's card, the document's name, the card as it is now, its budget and its
+describer; the ref is `{kind}:{id}`, the header reads "{document}: share card") and `CardConsoleAsk` (the outcome of
+a card Build is read for you: a refused card is an answer, never a change; the Build's notes reach the session as
+findings). The Build is pml-kit's `Card\CardBuild` with ai-service's `shared.pml.card` and `Card\CardSpec::describe()`.
+
 `/compact` runs ai-service's shared prompt `shared.terminal.compact`; no product template is needed.
 The recap a person sees on coming back (`POST .../sessions/{session}/recap`, `away_minutes`, 1.60.0) runs `shared.terminal.recap` through `SessionRecap`: a few first-person lines on what is being made, what changed, what is waiting and a next step, kept on the session per last turn (a second return with nothing new is free). It answers `recap: null, unavailable: true` when it cannot be written, so the panel keeps its own recap and never shows an error for something the person did not ask for by name.
 
