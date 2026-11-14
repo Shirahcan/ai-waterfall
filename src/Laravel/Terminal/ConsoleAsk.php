@@ -59,6 +59,23 @@ abstract class ConsoleAsk
         return app(TerminalSubject::class);
     }
 
+    /**
+     * The words a failed run leaves in the transcript (1.72.1). A message written for a person (a refusal, a Stop, a
+     * product's own sentence) passes through; an engine or database error never does: it carried a whole SQL query,
+     * host and database name into an admin's console (found 2026-11-14). That one is reported for the team and the
+     * person reads one plain sentence. A product may override to recognise its own safe exceptions.
+     */
+    protected function reasonOf(Throwable $e): string
+    {
+        if ($e instanceof \PDOException || $e instanceof \Error || $e instanceof \ErrorException) {
+            report($e);
+
+            return 'I could not finish this, and nothing was changed. Try again in a moment.';
+        }
+
+        return $e->getMessage();
+    }
+
     /** How many tokens the session window may fill beside the subject (the product's console budget). */
     abstract protected function budget(): int;
 
@@ -218,7 +235,7 @@ abstract class ConsoleAsk
             });
         } catch (Throwable $e) {
             $stopped = $this->isStop($e) ? ['stopped' => true] : [];
-            $this->finish($console, null, $log->finish(), ['changed' => false, 'reason' => $e->getMessage(), ...$stopped], $runId, null, ['served_level' => $served]);
+            $this->finish($console, null, $log->finish(), ['changed' => false, 'reason' => $this->reasonOf($e), ...$stopped], $runId, null, ['served_level' => $served]);
 
             throw $e;
         }

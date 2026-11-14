@@ -225,4 +225,20 @@ class ConsoleAskTest extends TestCase
         $this->assertSame('The service did not answer.', $answer['structured']['outcome']['reason']);
         $this->assertArrayNotHasKey('checkpoint_id', $answer['structured'], 'nothing changed, so no rewind point is offered');
     }
+
+    public function test_a_database_error_never_reaches_the_transcript_only_a_plain_sentence_does(): void
+    {
+        [$console, $space, $session] = $this->begin();
+
+        try {
+            $this->ask()->around($console, new RunLog(fn () => null), 'run-4', fn () => throw new \PDOException("SQLSTATE[42S22]: Column not found: 1054 Unknown column 'x' (Connection: mysql, Host: 127.0.0.1, SQL: update ...)"));
+            $this->fail('the failure must reach the caller');
+        } catch (\PDOException) {
+            // The caller still sees the real error (and reports it); only the person's transcript is plain.
+        }
+
+        $reason = $this->turns($space, $session)[1]['structured']['outcome']['reason'];
+        $this->assertSame('I could not finish this, and nothing was changed. Try again in a moment.', $reason);
+        $this->assertStringNotContainsString('SQL', $reason);
+    }
 }
