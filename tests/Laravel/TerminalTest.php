@@ -230,6 +230,50 @@ class TerminalTest extends TestCase
         $this->assertSame('Built five sections; the person wants a calm tone.', $window['summary']['text']);
     }
 
+    public function test_a_proposal_card_is_decided_once_on_its_turn_and_read_back_with_the_chat_cards_own_state(): void
+    {
+        $space = $this->spaceOf('u-1');
+        $session = $this->as('u-1')->postJson('/v1/admin/console/site_page/p1/sessions')->json('data.session.id');
+        $this->turn($space, $session, 'Draft the title', ['changed' => false]);
+        [$ask, $answer] = array_column($this->sessions()->open($space, $session, 'site_page:p1')['turns'], 'id');
+        $url = "/v1/admin/console/site_page/p1/sessions/{$session}/turns/";
+
+        $this->as('u-1')->putJson($url.$ask.'/card-state', ['card' => 'done'])->assertNotFound();
+        $this->as('u-1')->putJson($url.$answer.'/card-state', ['card' => 'started'])->assertStatus(422);
+        $this->as('u-1')->getJson("/v1/admin/console/site_page/p2/sessions/{$session}")->assertNotFound();
+        $this->as('u-1')->putJson("/v1/admin/console/site_page/p2/sessions/{$session}/turns/{$answer}/card-state", ['card' => 'done'])->assertNotFound();
+        $this->as('u-2')->putJson($url.$answer.'/card-state', ['card' => 'done'])->assertNotFound();
+
+        $this->as('u-1')->putJson($url.$answer.'/card-state', ['card' => 'done', 'summary' => 'Applied the title.'])->assertOk()
+            ->assertJsonPath('data.card_state.card', 'done')
+            ->assertJsonPath('data.card_state.summary', 'Applied the title.');
+
+        // Read back with the session, so a reload shows the card decided; the ask has no card.
+        $turns = $this->as('u-1')->getJson("/v1/admin/console/site_page/p1/sessions/{$session}")->assertOk()->json('data.turns');
+        $this->assertNull($turns[0]['card_state']);
+        $this->assertSame('done', $turns[1]['card_state']['card']);
+        // The same keys a chat card keeps (`card`, `summary`, `at`), so the two can never disagree.
+        $state = $this->sessions()->open($space, $session, 'site_page:p1')['turns'][1]['state'];
+        $this->assertSame(['card', 'summary', 'at'], array_keys($state));
+
+        $this->as('u-1')->putJson($url.$answer.'/card-state', ['card' => 'cancelled'])->assertStatus(409);
+    }
+
+    public function test_a_card_decision_keeps_a_rewound_turn_rewound(): void
+    {
+        $space = $this->spaceOf('u-1');
+        $session = $this->as('u-1')->postJson('/v1/admin/console/site_page/p1/sessions')->json('data.session.id');
+        $this->turn($space, $session, 'Draft the title', ['changed' => false]);
+        [$ask, $answer] = array_column($this->sessions()->open($space, $session, 'site_page:p1')['turns'], 'id');
+        $this->sessions()->markRewound($space, $session, 'site_page:p1', $ask);
+
+        $this->as('u-1')->putJson("/v1/admin/console/site_page/p1/sessions/{$session}/turns/{$answer}/card-state", ['card' => 'cancelled'])->assertOk();
+
+        $turn = $this->sessions()->open($space, $session, 'site_page:p1')['turns'][1];
+        $this->assertTrue(TerminalSessions::rewound($turn));
+        $this->assertSame('cancelled', TerminalSessions::cardState($turn)['card']);
+    }
+
     public function test_the_brief_belongs_to_the_subject_and_outlives_a_new_session(): void
     {
         $this->as('u-1')->putJson('/v1/admin/console/site_page/p1/brief', ['text' => 'Employers are the audience.'])->assertOk()

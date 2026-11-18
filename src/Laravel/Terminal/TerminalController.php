@@ -164,6 +164,23 @@ final class TerminalController extends Controller
         });
     }
 
+    /**
+     * Apply or Dismiss on an answer's proposal card (1.74.0, shared Studio P4a1): kept on its turn as the chat card's
+     * own state (`card: done|cancelled`), so a reload shows the card decided. The product applies the proposal
+     * itself before recording `done`; this only records what became of the card.
+     */
+    public function cardState(Request $request, string $kind, string $id, string $session, string $turn): JsonResponse
+    {
+        $data = $request->validate([
+            'card' => ['required', 'string', 'in:'.implode(',', TerminalSessions::CARD_STATES)],
+            'summary' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        return $this->on($request, $kind, $id, fn (string $space, string $ref) => [
+            'card_state' => $this->sessions->decide($space, $session, $ref, $turn, $data['card'], $data['summary'] ?? null),
+        ]);
+    }
+
     /** `/brief`: the subject's standing instructions, shared by everyone working on it. Empty removes it. */
     public function brief(Request $request, string $kind, string $id): JsonResponse
     {
@@ -349,6 +366,8 @@ final class TerminalController extends Controller
             'body' => $t['body'] ?? null,
             'structured' => is_array($t['structured'] ?? null) ? $t['structured'] : null,
             'rewound' => TerminalSessions::rewound($t),
+            // 1.74.0: what became of the answer's proposal card (null while undecided).
+            'card_state' => TerminalSessions::cardState($t),
             'at' => $t['created_at'] ?? null,
         ];
     }

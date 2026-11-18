@@ -42,7 +42,7 @@ final class TerminalRoutes
     {
         $p = trim($prefix, '/');
         $p = ($p === '' ? '' : $p.'/').'{kind}/{id}';
-        $where = ['kind' => self::KIND, 'id' => self::ID, 'session' => self::UUID];
+        $where = ['kind' => self::KIND, 'id' => self::ID, 'session' => self::UUID, 'turn' => self::UUID];
         $c = TerminalController::class;
         $names = 'assistant.terminal.'.($as !== null && $as !== '' ? trim($as, '.').'.' : '');
 
@@ -55,6 +55,8 @@ final class TerminalRoutes
             ['post', '/sessions/{session}/compact', 'compact', 10, 'sessions.compact'],
             ['post', '/sessions/{session}/recap', 'recap', 20, 'sessions.recap'],
             ['post', '/sessions/{session}/rewind', 'rewind', 30, 'sessions.rewind'],
+            // 1.74.0: Apply / Dismiss on an answer's proposal card, kept on its turn (the chat card's own state).
+            ['put', '/sessions/{session}/turns/{turn}/card-state', 'cardState', 30, 'sessions.card-state'],
             ['put', '/brief', 'brief', 30, 'brief'],
             // 1.64.0: the person's specialization choice for this subject (a guide, none, or back to the subject's own).
             ['put', '/specialization', 'specialization', 30, 'specialization'],

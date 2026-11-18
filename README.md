@@ -647,6 +647,14 @@ describer; the ref is `{kind}:{id}`, the header reads "{document}: share card") 
 a card Build is read for you: a refused card is an answer, never a change; the Build's notes reach the session as
 findings). The Build is pml-kit's `Card\CardBuild` with ai-service's `shared.pml.card` and `Card\CardSpec::describe()`.
 
+What became of an answer's PROPOSAL CARD lives on its turn (1.74.0, shared Studio P4a1): `PUT .../sessions/{session}/turns/{turn}/card-state`
+with `card` = `done` (applied) or `cancelled` (dismissed) and an optional `summary`, through `TerminalSessions::decide()`.
+It is written with the SAME keys a Porter chat card keeps on its ai-service turn (`card`, `summary`, `at`), so a chat
+card and a console proposal can never disagree about "decided", and every turn the console reads back carries
+`card_state` (null while undecided), so a reload or another device shows the card as it was left. Only an assistant
+turn of that subject's session can be decided, and only once (409). The product applies the proposal itself first;
+the route only records what became of the card.
+
 `/compact` runs ai-service's shared prompt `shared.terminal.compact`; no product template is needed.
 The recap a person sees on coming back (`POST .../sessions/{session}/recap`, `away_minutes`, 1.60.0) runs `shared.terminal.recap` through `SessionRecap`: a few first-person lines on what is being made, what changed, what is waiting and a next step, kept on the session per last turn (a second return with nothing new is free). It answers `recap: null, unavailable: true` when it cannot be written, so the panel keeps its own recap and never shows an error for something the person did not ask for by name.
 

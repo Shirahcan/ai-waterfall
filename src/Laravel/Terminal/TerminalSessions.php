@@ -48,6 +48,9 @@ final class TerminalSessions
     /** The kinds of finding a summary may list, as Claude Code's summary does. */
     public const FINDING_KINDS = ['issue', 'error', 'gap', 'suggestion'];
 
+    /** What a person may do with an answer's proposal card (1.74.0): the chat card's own values, applied or dismissed. */
+    public const CARD_STATES = ['done', 'cancelled'];
+
     public const BRIEF_KEY = 'terminal.brief';
 
     public const BRIEF_MAX = 4000;
@@ -218,6 +221,71 @@ final class TerminalSessions
         }
 
         return $marked;
+    }
+
+    /**
+     * What became of the proposal card on one answer (1.74.0, shared Studio P4a1): `done` (applied) or `cancelled`
+     * (dismissed). Kept on the ai-service turn with the SAME keys a Porter chat card uses (`card`, `summary`, `at`;
+     * Portify's AssistantCardStateController, 2026-11-03), so a chat card and a console proposal can never disagree
+     * about "decided", and a reload, or another device, shows the card as it was left. A card is decided once.
+     *
+     * @return array{card: string, summary?: string, at?: string}
+     */
+    public function decide(string $space, string $sessionId, string $subjectRef, string $turnId, string $card, ?string $summary = null): array
+    {
+        if (! in_array($card, self::CARD_STATES, true)) {
+            throw new AiRequestRefusedException('A suggestion is either applied or dismissed.', 422, 'bad_card_state');
+        }
+
+        $turn = null;
+
+        foreach ($this->open($space, $sessionId, $subjectRef)['turns'] as $candidate) {
+            if (($candidate['id'] ?? null) === $turnId) {
+                $turn = $candidate;
+
+                break;
+            }
+        }
+
+        if ($turn === null || ($turn['role'] ?? null) !== 'assistant') {
+            throw new AiRequestRefusedException('That answer is not in this session.', 404, 'no_such_turn');
+        }
+
+        if (self::cardState($turn) !== null) {
+            throw new AiRequestRefusedException('That suggestion was already decided.', 409, 'card_decided');
+        }
+
+        $state = array_merge((array) ($turn['state'] ?? []), array_filter([
+            'card' => $card,
+            'summary' => $summary === null || trim($summary) === '' ? null : self::clip(trim($summary), 1000),
+            'at' => gmdate('Y-m-d\TH:i:s\Z'),
+        ], fn ($v) => $v !== null));
+
+        $this->ai->spaces()->turnState($space, $sessionId, $turnId, $state);
+
+        return (array) self::cardState(['state' => $state]);
+    }
+
+    /**
+     * A turn's card outcome as the console reads it back, or null while undecided (1.74.0). The chat card's own
+     * keys: `card` (`done`, `cancelled`; a chat card may also say `started`), its `summary`, and when.
+     *
+     * @return array{card: string, summary?: string, at?: string}|null
+     */
+    public static function cardState(array $turn): ?array
+    {
+        $state = $turn['state'] ?? null;
+        $card = is_array($state) ? ($state['card'] ?? null) : null;
+
+        if (! is_string($card) || $card === '') {
+            return null;
+        }
+
+        return array_filter([
+            'card' => $card,
+            'summary' => is_string($state['summary'] ?? null) ? $state['summary'] : null,
+            'at' => is_string($state['at'] ?? null) ? $state['at'] : null,
+        ], fn ($v) => $v !== null);
     }
 
     /** Whether a turn was rewound (it stays on screen, dimmed, and out of the context). */
