@@ -177,6 +177,26 @@ class ConsoleAskTest extends TestCase
         $this->assertSame('pro', $answer['structured']['level']);
     }
 
+    public function test_details_a_run_saved_are_named_on_the_outcome_without_claiming_a_design_change(): void
+    {
+        [$console, $space, $session] = $this->begin();
+
+        // Owner 2026-11-23: an ask that only saved a post's details ended "Nothing changed" (1.75.0).
+        $this->ask()->around($console, new RunLog(fn () => null), 'run-3', fn () => [
+            'summary' => 'I wrote the summary.',
+            'data' => ['changed' => false, 'details' => ['Summary', ' ', 'Summary', 'Search title', 7]],
+        ]);
+
+        $outcome = $this->turns($space, $session)[1]['structured']['outcome'];
+        $this->assertFalse($outcome['changed'], 'a details save is not a design change: no rewind is offered');
+        $this->assertSame(['Summary', 'Search title'], $outcome['details'], 'blanks, repeats and non-text dropped');
+
+        // A run that saved nothing carries no details key at all.
+        [$console2, $space2, $session2] = $this->begin();
+        $this->ask()->around($console2, new RunLog(fn () => null), 'run-4', fn () => ['summary' => 'Done.', 'data' => ['changed' => true]]);
+        $this->assertArrayNotHasKey('details', $this->turns($space2, $session2)[1]['structured']['outcome']);
+    }
+
     public function test_a_plan_takes_no_rewind_point_and_records_its_steps(): void
     {
         [$console, $space, $session] = $this->begin('plan');

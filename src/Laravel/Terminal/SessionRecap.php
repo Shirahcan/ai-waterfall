@@ -6,8 +6,8 @@ use Shirahcan\AiClient\AiClient;
 
 /**
  * The recap of a console session for a person coming back to it (1.60.0, owner 2026-11-09: "Recap should
- * use AI"): a few lines, written by the assistant in the first person, on what is being made, what changed
- * or failed, what is waiting on the person and a sensible next step.
+ * use AI"): ONE short paragraph (1.75.0, owner 2026-11-23: "a brief summary similar to Claude Code"), written
+ * by the assistant in the first person: where the session stands, then "Next, ..." with one suggestion.
  *
  * ⚠ EVERY CALL HAS A READER. The panel asks for it when the person returns to the console after their set
  * time away, opens a session whose last turn is older than that, or asks (`/recap`). Never on a timer.
@@ -23,9 +23,8 @@ final class SessionRecap
     /** The most recent asks the recap reads; older work reaches it through the session's summary. */
     private const RECENT_PAIRS = 6;
 
-    private const LINES_MAX = 4;
-
-    private const LINE_MAX = 400;
+    /** The whole recap: one paragraph, at most two sentences as the prompt asks, cut at a word past this. */
+    private const RECAP_MAX = 480;
 
     public function __construct(private readonly AiClient $ai, private readonly TerminalSessions $sessions) {}
 
@@ -88,35 +87,36 @@ final class SessionRecap
     }
 
     /**
-     * The model's lines, kept to what the panel draws: non-empty strings, each cut at a word.
+     * The model's answer as the ONE paragraph the panel draws (1.75.0): its lines joined (a recap kept from before
+     * 1.75.0, or a model that still wrote several lines, reads as one), cut at a word. Empty when nothing is left.
      *
      * @return list<string>
      */
     private static function clean(mixed $lines): array
     {
-        $out = [];
+        $parts = [];
 
         foreach (is_array($lines) ? $lines : [] as $line) {
             $text = trim(preg_replace('/\s+/u', ' ', is_string($line) ? $line : '') ?? '');
 
-            if ($text === '') {
-                continue;
-            }
-
-            if (mb_strlen($text) > self::LINE_MAX) {
-                $cut = mb_substr($text, 0, self::LINE_MAX);
-                $space = mb_strrpos($cut, ' ');
-                $text = rtrim($space !== false && $space > self::LINE_MAX / 2 ? mb_substr($cut, 0, $space) : $cut).'…';
-            }
-
-            $out[] = $text;
-
-            if (count($out) === self::LINES_MAX) {
-                break;
+            if ($text !== '') {
+                $parts[] = $text;
             }
         }
 
-        return $out;
+        $text = implode(' ', $parts);
+
+        if ($text === '') {
+            return [];
+        }
+
+        if (mb_strlen($text) > self::RECAP_MAX) {
+            $cut = mb_substr($text, 0, self::RECAP_MAX);
+            $space = mb_strrpos($cut, ' ');
+            $text = rtrim($space !== false && $space > self::RECAP_MAX / 2 ? mb_substr($cut, 0, $space) : $cut).'…';
+        }
+
+        return [$text];
     }
 
     /** How long the person was away, in words the model can repeat. */

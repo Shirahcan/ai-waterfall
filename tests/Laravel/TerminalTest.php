@@ -295,7 +295,8 @@ class TerminalTest extends TestCase
         $data = $this->as('u-1')->postJson("/v1/admin/console/site_page/p1/sessions/{$session}/recap", ['away_minutes' => 120])->assertOk()->json('data');
 
         $this->assertFalse($data['unavailable']);
-        $this->assertSame(['You are reworking the Home page hero; I made it darker.', 'Next, you could try a calmer headline.'], $data['recap']['lines']);
+        // ONE paragraph (1.75.0, owner 2026-11-23): a model that still writes two lines reads as one.
+        $this->assertSame(['You are reworking the Home page hero; I made it darker. Next, you could try a calmer headline.'], $data['recap']['lines']);
         $this->assertFalse($data['recap']['cached']);
         $call = end($this->ai->log->calls);
         $this->assertSame(SessionRecap::TASK, $call['task']);

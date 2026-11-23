@@ -265,6 +265,9 @@ abstract class ConsoleAsk
             ...($changes !== null && $changes['changes'] !== [] ? ['changes' => $changes['changes']] : []),
             // The subject's record's fields the assistant drafted, to Apply or Dismiss (the values stay on the run).
             ...(is_array($data['proposal'] ?? null) ? ['proposal' => ['title' => (string) $data['proposal']['title'], 'fields' => array_values((array) $data['proposal']['fields'])]] : []),
+            // The subject's record's details the run SAVED, by the details panel's names (1.75.0, owner 2026-11-23: an
+            // ask that only saved a post's details ended "Nothing changed"); the panel names them on the outcome line.
+            ...(self::details($data) !== [] ? ['details' => self::details($data)] : []),
             'reason' => $out['ok'] ? null : (string) ($out['reason'] ?? ''),
         ], $runId, null, [
             'served_level' => $served,
@@ -273,6 +276,20 @@ abstract class ConsoleAsk
         ]);
 
         return $result;
+    }
+
+    /**
+     * The details a run says it saved (`data.details`): the names a person reads in the details panel, blanks and
+     * repeats dropped, at most 20.
+     *
+     * @param  array<string, mixed>  $data
+     * @return list<string>
+     */
+    private static function details(array $data): array
+    {
+        $names = array_map(fn ($d) => is_string($d) ? trim($d) : '', is_array($data['details'] ?? null) ? array_values($data['details']) : []);
+
+        return array_slice(array_values(array_unique(array_filter($names, fn (string $d) => $d !== ''))), 0, 20);
     }
 
     /**
