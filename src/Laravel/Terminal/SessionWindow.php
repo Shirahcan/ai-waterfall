@@ -151,12 +151,22 @@ final class SessionWindow
         return $pairs;
     }
 
-    /** What came of an answer, in one sentence the model and the person both read. */
+    /**
+     * What came of an answer, in one sentence the model and the person both read.
+     *
+     * ⚠ SAVED DETAILS ARE A CHANGE TOO (1.75.1, Portify owner 2026-11-23). An answer that saved the subject's details
+     * (a post's summary) carries them on `outcome.details` with `changed` false (the design did not change). Read as
+     * "Nothing changed.", the recap told the person their summary was never set, and every later ask's window told the
+     * model the same; so the details are named here, apart from the design.
+     */
     public static function outcome(array $outcome, ?array $plan = null): string
     {
         if ($plan !== null) {
             return 'Proposed a plan, nothing changed yet: '.implode('; ', array_map('strval', (array) ($plan['steps'] ?? [])));
         }
+
+        $details = self::details($outcome);
+        $proposed = is_array($outcome['proposal'] ?? null) ? ' More details were proposed for the person to apply; not saved yet.' : '';
 
         if (($outcome['changed'] ?? false) === true) {
             $n = (int) ($outcome['elements'] ?? 0);
@@ -170,12 +180,24 @@ final class SessionWindow
                 $line .= ' Edits the person made meanwhile were kept.';
             }
 
-            return $line;
+            return $line.($details !== [] ? ' Also saved these details: '.implode(', ', $details).'.' : '').$proposed;
+        }
+
+        if ($details !== []) {
+            return 'Saved these details: '.implode(', ', $details).' (the design did not change).'.$proposed;
         }
 
         $reason = trim((string) ($outcome['reason'] ?? ''));
 
-        return $reason !== '' ? 'Could not finish: '.$reason : 'Nothing changed.';
+        return $reason !== '' ? 'Could not finish: '.$reason : 'Nothing changed.'.$proposed;
+    }
+
+    /** @return list<string> the details an answer saved, by their names on the screen */
+    private static function details(array $outcome): array
+    {
+        $names = array_map(fn ($d) => is_string($d) ? trim($d) : '', (array) ($outcome['details'] ?? []));
+
+        return array_values(array_unique(array_filter($names, fn (string $d) => $d !== '')));
     }
 
     private static function line(array $pair): string

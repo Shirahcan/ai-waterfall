@@ -160,6 +160,18 @@ class TerminalTest extends TestCase
         $this->assertSame(['Make the hero dark', 'Add a FAQ from vanhack.com'], array_column(SessionWindow::build($after['session'], $after['turns'], null)['recent'], 'ask'));
     }
 
+    public function test_saved_details_read_as_saved_never_as_nothing_changed(): void
+    {
+        $this->assertSame('Saved these details: Summary, Search title (the design did not change).',
+            SessionWindow::outcome(['changed' => false, 'details' => ['Summary', ' Search title ', 'Summary', '']]));
+        $this->assertSame('Changed 2 elements. Also saved these details: Summary.',
+            SessionWindow::outcome(['changed' => true, 'elements' => 2, 'details' => ['Summary']]));
+        $this->assertSame('Saved these details: Title (the design did not change). More details were proposed for the person to apply; not saved yet.',
+            SessionWindow::outcome(['changed' => false, 'details' => ['Title'], 'proposal' => ['title' => 'Search', 'fields' => []]]));
+        $this->assertSame('Nothing changed.', SessionWindow::outcome(['changed' => false]));
+        $this->assertSame('Could not finish: No words yet.', SessionWindow::outcome(['changed' => false, 'reason' => 'No words yet.']));
+    }
+
     public function test_thinking_is_kept_whole_for_the_person_and_left_out_of_the_next_asks_window(): void
     {
         $space = $this->spaceOf('u-1');
