@@ -5,6 +5,7 @@ namespace Shirahcan\AiClient\Laravel\Atlas\Query;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Shirahcan\AiClient\Laravel\Atlas\AtlasRegistry;
 use Shirahcan\AiClient\Laravel\Atlas\Query\Dto\QueryPlan;
+use Shirahcan\AiClient\Laravel\Atlas\Query\Dto\QueryTarget;
 use Shirahcan\AiClient\Laravel\Atlas\Query\Dto\TargetResult;
 use Shirahcan\AiClient\Time\TimeWindowResolver;
 use Shirahcan\AiClient\Time\ViewerTime;
@@ -321,9 +322,11 @@ class QueryTools
         $preview = ['targets' => []];
         $asked = [];
         $plannedOffset = [];
+        $plannedTargets = [];
         foreach ($validated->plan->targets as $planned) {
             $asked[$planned->id] = $planned->metrics;
             $plannedOffset[$planned->id] = $planned->offset;
+            $plannedTargets[$planned->id] = $planned;
         }
 
         foreach ($resultSet->targets as $target) {
@@ -361,7 +364,7 @@ class QueryTools
                  * list on the Cases screen", which does not exist (test box, 2026-11-04).
                  */
                 'empty_means'    => $target->rows === [] && ($target->total ?? 0) === 0
-                    ? 'None exist that match, among the records this person can see. Say so plainly. Do not suggest a screen to check unless you know one.'
+                    ? $this->emptyMeans($plannedTargets[$target->id] ?? null, $target->entity, $audience)
                     : null,
                 // The exact period counted, in the asker's zone: the answer says it.
                 'window'         => $windowed['windows'][$target->id] ?? null,
@@ -396,6 +399,36 @@ class QueryTools
         }
 
         return ['preview' => $preview, 'result' => $resultSet];
+    }
+
+    /**
+     * What an empty target means, scoped to the record type it searched.
+     *
+     * ⚠ "NONE EXIST" WAS READ AS "IT DOES NOT EXIST ANYWHERE". Asked about "my blog post 'Work Permit After
+     * Positive LMIA'", Porter filtered ONE record type by the title, got no rows and was told "None exist
+     * that match ... Say so plainly", so it told the admin the post could not be found (Portify local,
+     * 2026-11-20). When the empty target looked for a NAME (a text field matched by =, in, contains or
+     * starts_with), the note now says where it looked and sends the model to search_records first. Any
+     * other empty target (a count of zero this week) is still a plain answer (1.76.0).
+     */
+    private function emptyMeans(?QueryTarget $planned, string $entityKey, string $audience): string
+    {
+        $entity = $this->registry->get($entityKey);
+        $plural = $entity?->pluralFor($audience) ?? str_replace('_', ' ', $entityKey);
+
+        $named = false;
+        foreach ($planned?->filters ?? [] as $filter) {
+            $type = $entity?->dimension($filter->field)?->type;
+            if ($type === 'string' && in_array($filter->op, ['=', 'in', 'contains', 'starts_with'], true)) {
+                $named = true;
+            }
+        }
+
+        return $named
+            ? "No {$plural} match. You looked only at {$plural}: if the person named something, it may be another kind of "
+                .'record. Call search_records with their words before you say it does not exist.'
+            : "No {$plural} match, among the records this person can see. Say so plainly. Do not suggest a screen to "
+                .'check unless you know one.';
     }
 
     /**

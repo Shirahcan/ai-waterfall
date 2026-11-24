@@ -5,6 +5,7 @@ namespace Shirahcan\AiClient\Laravel\Atlas;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Shirahcan\AiClient\Laravel\Atlas\Query\Dto\QueryResultSet;
 use Shirahcan\AiClient\Laravel\Atlas\Query\QueryTools;
+use Shirahcan\AiClient\Laravel\Atlas\Query\RecordSearch;
 use Throwable;
 
 /**
@@ -32,7 +33,10 @@ final class DataTools
 
     public const QUERY = 'run_data_query';
 
-    public const NAMES = [self::SEARCH, self::DESCRIBE, self::VALUES, self::QUERY];
+    /** Which record type a NAME belongs to, across every type ({@see RecordSearch}, 1.76.0). */
+    public const RECORDS = 'search_records';
+
+    public const NAMES = [self::SEARCH, self::DESCRIBE, self::VALUES, self::QUERY, self::RECORDS];
 
     public function __construct(
         private QueryTools $tools,
@@ -57,7 +61,8 @@ final class DataTools
                     ."THEIR OWN records ({$w->records}...). Search the SPECIFIC words ({$w->searchTerms}), not the record type. "
                     .'Start every data question here; never guess a key. '
                     ."It finds FIELD NAMES, never people: for one named {$w->namedThings} "
-                    ."({$w->names}) use find_record, and never say someone does not exist because this found nothing. "
+                    ."({$w->names}) use find_record, for a title or name whose record type you do not know use search_records, "
+                    .'and never say someone or something does not exist because this found nothing. '
                     .'Results are already limited to what this user may see.'.$this->recordTypes($audience),
                 'input_schema' => ['type' => 'object', 'properties' => [
                     'term' => ['type' => 'string', 'description' => 'One word or short phrase from the question.'],
@@ -80,6 +85,16 @@ final class DataTools
                     'entity'    => ['type' => 'string'],
                     'dimension' => ['type' => 'string', 'description' => 'A field key from describe_data_entity.'],
                 ], 'required' => ['entity', 'dimension']],
+            ],
+            [
+                'name'        => self::RECORDS,
+                'description' => 'Find which records a name or title belongs to when you do not know its record type '
+                    ."(\"my post Spring Launch Notes\", \"the Acme one\"): searches the naming fields (titles, names, "
+                    .'references) of every record type you can query and says which types hold a match. Use it before you '
+                    .'say a named thing does not exist, then read the match with run_data_query.',
+                'input_schema' => ['type' => 'object', 'properties' => [
+                    'words' => ['type' => 'string', 'description' => 'The name or title as the person said it, or part of it.'],
+                ], 'required' => ['words']],
             ],
             [
                 'name'        => self::QUERY,
@@ -159,6 +174,7 @@ final class DataTools
                 self::VALUES   => $this->observed($this->tools->listValues((string) ($input['entity'] ?? ''),
                     (string) ($input['dimension'] ?? ''), $audience, $user)),
                 self::QUERY    => $this->query(is_array($input['plan'] ?? null) ? $input['plan'] : [], $audience, $user),
+                self::RECORDS  => $this->observed((new RecordSearch($this->registry, $this->tools))->search((string) ($input['words'] ?? ''), $audience, $user)),
                 default        => ['ok' => false, 'error' => 'No such tool.'],
             };
         } catch (Throwable $e) {

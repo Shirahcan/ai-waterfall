@@ -42,6 +42,12 @@ final class ChatTurnInput
         // `thread` (the WHOLE thread to a budget, older turns folded into a running summary after the answer).
         // The product's own gate chooses; an older ai-service ignores it.
         public readonly string $context = self::CONTEXT_WINDOW,
+        // The product's multi-pass gate (1.76): the turn reads what earlier turns looked up, finds a named thing
+        // across record types, and its answer is checked against its own lookups (and fixed when it fails).
+        // An older ai-service ignores it.
+        public readonly bool $multiPass = false,
+        // The step budget the product asks for on a multi-pass turn; ai-service clamps it (6 to 10).
+        public readonly ?int $maxSteps = null,
     ) {}
 
     public const CONTEXT_WINDOW = 'window';
@@ -76,6 +82,8 @@ final class ChatTurnInput
             'report_gaps'     => $this->reportGaps ? true : null,
             'self_review'     => $this->selfReview ? true : null,
             'context'         => $this->context === self::CONTEXT_THREAD ? self::CONTEXT_THREAD : null,
+            'multi_pass'      => $this->multiPass ? true : null,
+            'max_steps'       => $this->multiPass ? $this->maxSteps : null,
         ],static fn ($v) => $v !== null && $v !== '' && $v !== []);
     }
 }
