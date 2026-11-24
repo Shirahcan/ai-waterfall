@@ -8,7 +8,7 @@ namespace Shirahcan\AiClient\Laravel\Atlas\Query\Dto;
  */
 final class QueryFilter
 {
-    public const OPS = ['=', '!=', '>', '>=', '<', '<=', 'in', 'not_in', 'between', 'contains', 'starts_with', 'is_null', 'not_null'];
+    public const OPS = ['=', '!=', '>', '>=', '<', '<=', 'in', 'not_in', 'between', 'contains', 'contains_any', 'starts_with', 'is_null', 'not_null'];
 
     public function __construct(
         public readonly string $field,
@@ -46,6 +46,7 @@ final class QueryFilter
             'notnull', 'is not null', 'is_not_null' => 'not_null',
             'startswith', 'starts with' => 'starts_with',
             'like' => 'contains',
+            'containsany', 'contains any', 'any' => 'contains_any',
             default => trim($op),
         };
     }

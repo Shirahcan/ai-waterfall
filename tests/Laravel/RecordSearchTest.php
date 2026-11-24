@@ -137,12 +137,40 @@ class RecordSearchTest extends TestCase
         $this->assertSame(['notes'], $out['looked_in']);
     }
 
-    public function test_no_match_says_to_try_fewer_words_never_that_it_does_not_exist(): void
+    /** Portify 2026-11-24: a title misremembered by one word ("positive") found nothing anywhere. */
+    public function test_a_title_missing_one_word_comes_back_as_a_near_match_that_says_which_word(): void
     {
         $out = $this->search(['posts.view', 'notes.view'])->search('Work Permit After Positive LMIA', 'admin', $this->person());
 
         $this->assertSame([], $out['matches']);
+        $this->assertSame(['post'], array_column($out['near_matches'], 'entity'));
+        $this->assertSame('Canada Work Permit After LMIA', $out['near_matches'][0]['rows'][0]['title']);
+        $this->assertSame('positive', $out['near_matches'][0]['rows'][0]['missing_words']);
+        $this->assertStringContainsString('all but one', $out['next']);
+        $this->assertArrayNotHasKey('none_found', $out);
+    }
+
+    public function test_no_match_says_to_try_fewer_words_never_that_it_does_not_exist(): void
+    {
+        // Two of four words is not near: "permit" and "work" alone are in half the titles.
+        $out = $this->search(['posts.view', 'notes.view'])->search('Open Work Permit Spouse', 'admin', $this->person());
+
+        $this->assertSame([], $out['matches']);
+        $this->assertArrayNotHasKey('near_matches', $out);
         $this->assertStringContainsString('fewer or different words', $out['none_found']);
+    }
+
+    public function test_contains_any_matches_a_row_holding_any_of_the_words_and_needs_a_list(): void
+    {
+        $registry = new AtlasRegistry([new SearchPostProvider(), new SearchNoteProvider()], new FakeAtlasAccess(['posts.view']));
+        $tools = new QueryTools($registry, new PlanValidator($registry), new QueryExecutor($registry, new SafeQueryBuilder($registry)));
+        $any = $tools->runQuery(['targets' => [['id' => 't', 'entity' => 'post', 'select' => ['title'],
+            'filters' => [['field' => 'title', 'op' => 'contains_any', 'value' => ['basics', 'nothing_like_this']]]]]], 'admin', $this->person());
+        $this->assertSame(['Study Permit Basics'], array_column($any['preview']['targets'][0]['rows'], 'title'));
+
+        $refused = $tools->runQuery(['targets' => [['id' => 't', 'entity' => 'post', 'select' => ['title'],
+            'filters' => [['field' => 'title', 'op' => 'contains_any', 'value' => 'basics']]]]], 'admin', $this->person());
+        $this->assertStringContainsString('needs a list of values', json_encode($refused));
     }
 
     public function test_an_empty_name_lookup_says_where_it_looked_and_points_to_search_records(): void

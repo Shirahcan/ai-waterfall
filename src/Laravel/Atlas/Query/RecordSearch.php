@@ -18,7 +18,7 @@ use Shirahcan\AiClient\Laravel\Atlas\AtlasRegistry;
  * query audit as any other read. It never widens what a person may see.
  *
  * Every significant word must appear (in any order), so "Work Permit After LMIA" finds "Canada Work Permit
- * After LMIA". A title worded differently ("positive") finds nothing, and the result says to try fewer words.
+ * After LMIA". When no record has them all, a second pass returns the rows holding all but one ({@see near()}).
  */
 final class RecordSearch
 {
@@ -35,6 +35,15 @@ final class RecordSearch
 
     /** Rows shown per type: enough to tell which one was meant, never a list to read from. */
     public const ROWS = 5;
+
+    /**
+     * The near pass runs only while the whole search is inside this (the tool's timeout is
+     * {@see DataTools::RECORDS_TIMEOUT}, and one slow type takes ~2 s).
+     */
+    public const NEAR_BUDGET_SECONDS = 25.0;
+
+    /** Rows read per type by the near pass, before they are scored. */
+    public const NEAR_ROWS = 20;
 
     /** Words too common to narrow a title. */
     private const STOP_WORDS = ['a', 'an', 'the', 'my', 'our', 'your', 'of', 'for', 'to', 'and', 'in', 'on', 'at', 'with', 'about'];
@@ -57,7 +66,8 @@ final class RecordSearch
         $unread = [];
         $notReached = [];
         $started = microtime(true);
-        foreach ($this->searchable($audience, $user) as [$entity, $keys]) {
+        $types = $this->searchable($audience, $user);
+        foreach ($types as [$entity, $keys]) {
             /** @var AtlasEntity $entity */
             $plural = $entity->pluralFor($audience);
             if (microtime(true) - $started > self::BUDGET_SECONDS) {
@@ -99,6 +109,7 @@ final class RecordSearch
         }
 
         usort($matches, static fn (array $a, array $b) => $b['total'] <=> $a['total']);
+        $near = $matches === [] && $notReached === [] ? $this->near($types, $terms, $audience, $user, $started) : [];
 
         return array_filter([
             'searched_for' => implode(' ', $terms),
@@ -108,14 +119,74 @@ final class RecordSearch
             'not_searched' => $notReached !== []
                 ? 'Out of time before these: '.implode(', ', $notReached).'. If the thing is one of these, query that type by its name field.'
                 : null,
-            'next' => $matches !== []
-                ? 'Read the match the person means with run_data_query (filter its name field) or describe_data_entity, then answer.'
-                : null,
-            'none_found' => $matches === []
+            'near_matches' => $near ?: null,
+            'next' => match (true) {
+                $matches !== [] => 'Read the match the person means with run_data_query (filter its name field) or describe_data_entity, then answer.',
+                $near !== [] => 'No record has every word. These have all but one (missing_words says which). If one is plainly what '
+                    .'the person means, read it and say which title you used; if several could be, ask which.',
+                default => null,
+            },
+            'none_found' => $matches === [] && $near === []
                 ? 'No record you can query has all of these words in its name or title. Before you say it does not exist, '
                     .'search again with fewer or different words from the name (a person may misremember a title).'
                 : null,
         ], static fn ($v) => $v !== null);
+    }
+
+    /**
+     * The second pass when no record has every word: rows holding all the words but one, closest first.
+     *
+     * ⚠ A PERSON MISREMEMBERS A TITLE BY A WORD. "Work Permit After Positive LMIA" was a post titled without
+     * "after", and the every-word pass found nothing anywhere (Portify, 2026-11-24). Each type is read with
+     * `contains_any` (rows holding ANY of the words, through the same runQuery and its audience rules), then scored
+     * here; only rows missing at most one word survive, so "permit" alone never matches a long title.
+     *
+     * @param  list<array{0: AtlasEntity, 1: list<string>}>  $types
+     * @param  list<string>  $terms
+     * @return list<array<string, mixed>>
+     */
+    private function near(array $types, array $terms, string $audience, Authenticatable $user, float $started): array
+    {
+        $near = [];
+        foreach ($types as [$entity, $keys]) {
+            /** @var AtlasEntity $entity */
+            if (microtime(true) - $started > self::NEAR_BUDGET_SECONDS) {
+                break;
+            }
+            $own = self::withoutTypeWords($terms, $entity, $audience);
+            // Three words at least: all-but-one of two is one word, which is no match at all.
+            if (count($own) < 3) {
+                continue;
+            }
+
+            $targets = [];
+            foreach ($keys as $i => $key) {
+                $targets[] = ['id' => 'near'.$i, 'entity' => $entity->key, 'select' => $keys,
+                    'filters' => [['field' => $key, 'op' => 'contains_any', 'value' => $own]], 'limit' => self::NEAR_ROWS];
+            }
+            $run = $this->tools->runQuery(['targets' => $targets], $audience, $user);
+
+            $scored = [];
+            foreach (self::found((array) ($run['preview']['targets'] ?? []))['rows'] as $row) {
+                $text = mb_strtolower(implode(' ', array_map(static fn ($v) => is_scalar($v) ? (string) $v : '', $row)));
+                $missing = array_values(array_filter($own, static fn (string $t) => ! str_contains($text, $t)));
+                if (count($missing) <= 1) {
+                    $scored[] = ['missing' => $missing, 'row' => $row];
+                }
+            }
+            if ($scored === []) {
+                continue;
+            }
+            usort($scored, static fn (array $a, array $b) => count($a['missing']) <=> count($b['missing']));
+            $near[] = [
+                'entity' => $entity->key,
+                'record_type' => $entity->labelFor($audience),
+                'rows' => array_map(static fn (array $s) => $s['row'] + ['missing_words' => implode(' ', $s['missing'])],
+                    array_slice($scored, 0, self::ROWS)),
+            ];
+        }
+
+        return $near;
     }
 
     /**

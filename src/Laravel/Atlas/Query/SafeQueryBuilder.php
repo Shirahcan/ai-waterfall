@@ -473,6 +473,18 @@ class SafeQueryBuilder
             case 'starts_with':
                 $this->applyLike($q, $column, (string) $value, false, $isExpr);
                 break;
+            case 'contains_any':
+                // Any ONE of the words, in one OR group: a near match for a misremembered title (RecordSearch).
+                $words = array_values(array_filter(array_map(static fn ($w) => trim((string) $w), (array) $value),
+                    static fn (string $w) => $w !== ''));
+                if ($words !== []) {
+                    $q->where(function (Builder $any) use ($column, $words, $isExpr) {
+                        foreach ($words as $word) {
+                            $this->applyLike($any, $column, $word, true, $isExpr, 'or');
+                        }
+                    });
+                }
+                break;
         }
     }
 
@@ -520,7 +532,7 @@ class SafeQueryBuilder
      * explicit ESCAPE clause whose literal is written correctly per driver
      * (MySQL processes backslashes in string literals; SQLite does not).
      */
-    private function applyLike(Builder $q, string $column, string $value, bool $bothSides, bool $isExpr = false): void
+    private function applyLike(Builder $q, string $column, string $value, bool $bothSides, bool $isExpr = false, string $boolean = 'and'): void
     {
         $escaped = addcslashes($value, '%_\\');
         $pattern = ($bothSides ? '%' : '').$escaped.'%';
@@ -531,7 +543,7 @@ class SafeQueryBuilder
         $driver = $q->getConnection()->getDriverName();
         $escapeLiteral = in_array($driver, ['mysql', 'mariadb'], true) ? "'\\\\'" : "'\\'";
 
-        $q->whereRaw("{$wrapped} like ? escape {$escapeLiteral}", [$pattern]);
+        $q->whereRaw("{$wrapped} like ? escape {$escapeLiteral}", [$pattern], $boolean);
     }
 
     private function applyDimensionTimeRange(Builder $q, AtlasEntity $entity, QueryTarget $target, string $baseTable, array &$joined): void
@@ -768,6 +780,7 @@ class SafeQueryBuilder
             'not_in' => "not in ({$rendered})",
             'between' => "between {$rendered}",
             'contains' => "contains \"{$rendered}\"",
+            'contains_any' => "contains any of \"{$rendered}\"",
             'starts_with' => "starts with \"{$rendered}\"",
             'is_null' => 'is empty',
             'not_null' => 'is set',

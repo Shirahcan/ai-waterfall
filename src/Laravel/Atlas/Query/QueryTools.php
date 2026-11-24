@@ -419,7 +419,7 @@ class QueryTools
         $named = false;
         foreach ($planned?->filters ?? [] as $filter) {
             $type = $entity?->dimension($filter->field)?->type;
-            if ($type === 'string' && in_array($filter->op, ['=', 'in', 'contains', 'starts_with'], true)) {
+            if ($type === 'string' && in_array($filter->op, ['=', 'in', 'contains', 'contains_any', 'starts_with'], true)) {
                 $named = true;
             }
         }

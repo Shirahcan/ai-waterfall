@@ -54,7 +54,7 @@ class PlanValidator
         'money' => ['=', '!=', '>', '>=', '<', '<=', 'between', 'in', 'not_in', 'is_null', 'not_null'],
         'date' => ['=', '!=', '>', '>=', '<', '<=', 'between', 'in', 'not_in', 'is_null', 'not_null'],
         'datetime' => ['=', '!=', '>', '>=', '<', '<=', 'between', 'in', 'not_in', 'is_null', 'not_null'],
-        'string' => ['=', '!=', 'contains', 'starts_with', 'in', 'not_in', 'is_null', 'not_null'],
+        'string' => ['=', '!=', 'contains', 'contains_any', 'starts_with', 'in', 'not_in', 'is_null', 'not_null'],
         'enum' => ['=', '!=', 'in', 'not_in', 'is_null', 'not_null'],
         'bool' => ['=', '!=', 'is_null', 'not_null'],
     ];
@@ -345,7 +345,7 @@ class PlanValidator
             return "The condition '{$filter->op}' doesn't apply to '{$dim->label}'.";
         }
 
-        if (in_array($filter->op, ['in', 'not_in'], true) && ! is_array($filter->value)) {
+        if (in_array($filter->op, ['in', 'not_in', 'contains_any'], true) && ! is_array($filter->value)) {
             return "The '{$dim->label}' filter needs a list of values.";
         }
 
