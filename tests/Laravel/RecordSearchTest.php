@@ -177,4 +177,19 @@ class RecordSearchTest extends TestCase
         $this->assertTrue($out['ok']);
         $this->assertSame('Study Permit Basics', $out['result']['matches'][0]['rows'][0]['title']);
     }
+
+    public function test_a_plan_sent_as_a_json_string_is_the_same_plan(): void
+    {
+        $registry = new AtlasRegistry([new SearchPostProvider(), new SearchNoteProvider()], new FakeAtlasAccess(['posts.view']));
+        $tools = new QueryTools($registry, new PlanValidator($registry), new QueryExecutor($registry, new SafeQueryBuilder($registry)));
+        $data = new DataTools($tools, $registry, new DataToolWords());
+        $plan = ['targets' => [['id' => 'p', 'entity' => 'post', 'select' => ['title'],
+            'filters' => [['field' => 'title', 'op' => 'contains', 'value' => 'Study']]]]];
+
+        $asObject = $data->run(DataTools::QUERY, ['plan' => $plan], $this->person(), 'admin');
+        $asString = $data->run(DataTools::QUERY, ['plan' => json_encode($plan)], $this->person(), 'admin');
+
+        $this->assertTrue($asString['ok'], (string) ($asString['error'] ?? ''));
+        $this->assertSame($asObject['result'], $asString['result']);
+    }
 }

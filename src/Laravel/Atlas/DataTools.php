@@ -177,7 +177,7 @@ final class DataTools
                 self::DESCRIBE => $this->observed($this->tools->describeEntity((string) ($input['entity'] ?? ''), $audience, $user)),
                 self::VALUES   => $this->observed($this->tools->listValues((string) ($input['entity'] ?? ''),
                     (string) ($input['dimension'] ?? ''), $audience, $user)),
-                self::QUERY    => $this->query(is_array($input['plan'] ?? null) ? $input['plan'] : [], $audience, $user),
+                self::QUERY    => $this->query(self::plan($input['plan'] ?? null), $audience, $user),
                 self::RECORDS  => $this->observed((new RecordSearch($this->registry, $this->tools))->search((string) ($input['words'] ?? ''), $audience, $user)),
                 default        => ['ok' => false, 'error' => 'No such tool.'],
             };
@@ -190,6 +190,22 @@ final class DataTools
     }
 
     /** @param  array<string, mixed>  $observation */
+    /**
+     * The plan as an array. ⚠ A MODEL SOMETIMES SENDS IT AS A JSON STRING ("plan": "{\"targets\": ...}"), and an
+     * array-only check turned that into an empty plan and a refusal, which spent a turn's last tool step on nothing
+     * and left its answer empty (Portify local, 2026-11-24). A string that decodes to an object is the same plan.
+     *
+     * @return array<string, mixed>
+     */
+    private static function plan(mixed $plan): array
+    {
+        if (is_string($plan)) {
+            $plan = json_decode($plan, true);
+        }
+
+        return is_array($plan) ? $plan : [];
+    }
+
     private function observed(array $observation): array
     {
         return isset($observation['error'])
