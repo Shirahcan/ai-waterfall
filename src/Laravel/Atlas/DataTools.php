@@ -36,6 +36,9 @@ final class DataTools
     /** Which record type a NAME belongs to, across every type ({@see RecordSearch}, 1.76.0). */
     public const RECORDS = 'search_records';
 
+    /** Seconds the chat engine waits for search_records (its default is 10; the sweep stops itself at 18). */
+    public const RECORDS_TIMEOUT = 30;
+
     public const NAMES = [self::SEARCH, self::DESCRIBE, self::VALUES, self::QUERY, self::RECORDS];
 
     public function __construct(
@@ -95,6 +98,7 @@ final class DataTools
                 'input_schema' => ['type' => 'object', 'properties' => [
                     'words' => ['type' => 'string', 'description' => 'The name or title as the person said it, or part of it.'],
                 ], 'required' => ['words']],
+                'timeout_seconds' => self::RECORDS_TIMEOUT,
             ],
             [
                 'name'        => self::QUERY,

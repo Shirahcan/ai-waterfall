@@ -170,6 +170,8 @@ class RecordSearchTest extends TestCase
 
         $this->assertTrue($data->handles(DataTools::RECORDS));
         $this->assertContains(DataTools::RECORDS, array_column($data->definitions('admin'), 'name'));
+        // The engine's 10 s default is too short for a sweep across every type (Portify local 2026-11-24).
+        $this->assertSame(DataTools::RECORDS_TIMEOUT, array_column($data->definitions('admin'), 'timeout_seconds', 'name')[DataTools::RECORDS]);
 
         $out = $data->run(DataTools::RECORDS, ['words' => 'study permit'], $this->person(), 'admin');
         $this->assertTrue($out['ok']);

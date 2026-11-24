@@ -22,8 +22,16 @@ use Shirahcan\AiClient\Laravel\Atlas\AtlasRegistry;
  */
 final class RecordSearch
 {
-    /** Record types searched in one call: one small query each, so the cost stays bounded. */
-    public const MAX_TYPES = 25;
+    /**
+     * How long one search may run before it stops and names the types it did not reach. A product calls this
+     * through its tool endpoint, which the chat engine gives {@see DataTools::RECORDS_TIMEOUT} seconds.
+     *
+     * ⚠ PORTIFY HAS 104 SEARCHABLE TYPES, and a few are slow (its conversations ~2 s, meetings ~1.4 s, locally
+     * 2026-11-24); the whole sweep took ~7 s on a laptop and more under load, past the engine's 10 s default,
+     * so the first live call came back "Could not reach that information just now". A fixed type cap was
+     * worse: it silently never searched the rest.
+     */
+    public const BUDGET_SECONDS = 18.0;
 
     /** Rows shown per type: enough to tell which one was meant, never a list to read from. */
     public const ROWS = 5;
@@ -47,9 +55,16 @@ final class RecordSearch
         $matches = [];
         $lookedIn = [];
         $unread = [];
-        foreach (array_slice($this->searchable($audience, $user), 0, self::MAX_TYPES) as [$entity, $keys]) {
+        $notReached = [];
+        $started = microtime(true);
+        foreach ($this->searchable($audience, $user) as [$entity, $keys]) {
             /** @var AtlasEntity $entity */
             $plural = $entity->pluralFor($audience);
+            if (microtime(true) - $started > self::BUDGET_SECONDS) {
+                $notReached[] = $plural;
+
+                continue;
+            }
             $lookedIn[] = $plural;
             // "my blog post Spring Launch": the type's own name is not part of the title.
             $own = self::withoutTypeWords($terms, $entity, $audience);
@@ -90,6 +105,9 @@ final class RecordSearch
             'matches' => $matches,
             'looked_in' => $lookedIn,
             'could_not_read' => $unread ?: null,
+            'not_searched' => $notReached !== []
+                ? 'Out of time before these: '.implode(', ', $notReached).'. If the thing is one of these, query that type by its name field.'
+                : null,
             'next' => $matches !== []
                 ? 'Read the match the person means with run_data_query (filter its name field) or describe_data_entity, then answer.'
                 : null,
@@ -116,16 +134,22 @@ final class RecordSearch
             }
         }
 
-        $out = [];
+        // Types that declare what names a row first: a person names THOSE ("my post", "the Acme role").
+        $named = [];
+        $labelled = [];
         foreach ($this->registry->forAudience($audience, $user) as $entity) {
             $own = $entity->identityKeys !== [] ? $entity->identityKeys : array_filter([$entity->primaryLabelDimension()?->key]);
             $keys = array_values(array_intersect($own, $visible[$entity->key] ?? []));
             if ($keys !== []) {
-                $out[] = [$entity, $keys];
+                if ($entity->identityKeys !== []) {
+                    $named[] = [$entity, $keys];
+                } else {
+                    $labelled[] = [$entity, $keys];
+                }
             }
         }
 
-        return $out;
+        return [...$named, ...$labelled];
     }
 
     /**
