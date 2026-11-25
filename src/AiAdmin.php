@@ -382,6 +382,46 @@ class AiAdmin
     }
 
     /**
+     * How much the model reads each turn, per product (ai-service ContextLimits, 2026-11-25): every product and limit,
+     * with `configured: false` for one nobody decided (it runs on the service default).
+     *
+     * @return array{context_limits: list<array<string, mixed>>, limits: list<array<string, mixed>>}
+     */
+    public function contextLimits(): array
+    {
+        $payload = $this->client->getJson('api/v1/admin/context-limits');
+
+        return [
+            'context_limits' => array_values((array) ($payload['context_limits'] ?? [])),
+            'limits'         => array_values((array) ($payload['limits'] ?? [])),
+        ];
+    }
+
+    /**
+     * Set one product's value for one limit (the service refuses a value outside the limit's bounds with a 422).
+     *
+     * @return array{context_limit: array<string, mixed>, previous_tokens: ?int}
+     */
+    public function setContextLimit(string $product, string $limit, int $tokens): array
+    {
+        $payload = $this->client->putJson('api/v1/admin/context-limits', ['product' => $product, 'limit' => $limit, 'tokens' => $tokens]);
+
+        return ['context_limit' => (array) ($payload['context_limit'] ?? []), 'previous_tokens' => isset($payload['previous_tokens']) ? (int) $payload['previous_tokens'] : null];
+    }
+
+    /**
+     * Put one product's limit back on the service default.
+     *
+     * @return array{context_limit: array<string, mixed>, previous_tokens: ?int}
+     */
+    public function resetContextLimit(string $product, string $limit): array
+    {
+        $payload = $this->client->postJson('api/v1/admin/context-limits/reset', ['product' => $product, 'limit' => $limit]);
+
+        return ['context_limit' => (array) ($payload['context_limit'] ?? []), 'previous_tokens' => isset($payload['previous_tokens']) ? (int) $payload['previous_tokens'] : null];
+    }
+
+    /**
      * Every provider price: what applies today, what is coming, whether anybody
      * set it here, and every PAID key nothing prices (its spend records as zero).
      *

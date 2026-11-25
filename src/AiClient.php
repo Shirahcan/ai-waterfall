@@ -972,6 +972,24 @@ class AiClient
         return ['calls' => array_values((array) ($payload['calls'] ?? [])), 'meta' => (array) ($payload['meta'] ?? [])];
     }
 
+    /**
+     * This product's own context limits (ai-service ContextLimits, 2026-11-25), keyed by limit: what its turns read and
+     * whether an admin decided it. A product reads its console window here instead of keeping its own number.
+     *
+     * @return array<string, array{tokens: int, default_tokens: int, configured: bool}>
+     */
+    public function contextLimits(): array
+    {
+        $out = [];
+        foreach ((array) ($this->get('api/v1/context-limits')['context_limits'] ?? []) as $row) {
+            if (is_array($row) && isset($row['limit'])) {
+                $out[(string) $row['limit']] = ['tokens' => (int) ($row['tokens'] ?? 0), 'default_tokens' => (int) ($row['default_tokens'] ?? 0), 'configured' => (bool) ($row['configured'] ?? false)];
+            }
+        }
+
+        return $out;
+    }
+
     public function usage(array $query = []): array
     {
         return $this->get('api/v1/usage', $query);

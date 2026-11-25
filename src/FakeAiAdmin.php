@@ -436,6 +436,51 @@ class FakeAiAdmin extends AiAdmin
         return ['route' => $this->routeRow($routeKey), 'removed' => $removed];
     }
 
+    /** @var array<string, array<string, int>> product => limit => tokens an admin decided */
+    public array $contextLimits = [];
+
+    /** @var array<string, int> the service defaults, as ai-service ships them */
+    public array $contextDefaults = ['chat.thread' => 40000, 'chat.page_summary' => 2000, 'console.context' => 48000];
+
+    public function contextLimits(): array
+    {
+        $rows = [];
+        foreach ($this->products as $product) {
+            foreach (array_keys($this->contextDefaults) as $limit) {
+                $rows[] = $this->contextRow($product, $limit);
+            }
+        }
+
+        return ['context_limits' => $rows, 'limits' => array_map(fn (string $k, int $d) => ['limit' => $k, 'default_tokens' => $d], array_keys($this->contextDefaults), $this->contextDefaults)];
+    }
+
+    public function setContextLimit(string $product, string $limit, int $tokens): array
+    {
+        $was = $this->contextLimits[$product][$limit] ?? null;
+        $this->contextLimits[$product][$limit] = $tokens;
+        $this->writes[] = ['context_limit.set', $product, $limit, $tokens];
+
+        return ['context_limit' => $this->contextRow($product, $limit), 'previous_tokens' => $was];
+    }
+
+    public function resetContextLimit(string $product, string $limit): array
+    {
+        $was = $this->contextLimits[$product][$limit] ?? null;
+        unset($this->contextLimits[$product][$limit]);
+        $this->writes[] = ['context_limit.reset', $product, $limit];
+
+        return ['context_limit' => $this->contextRow($product, $limit), 'previous_tokens' => $was];
+    }
+
+    /** @return array<string, mixed> */
+    private function contextRow(string $product, string $limit): array
+    {
+        $set = $this->contextLimits[$product][$limit] ?? null;
+
+        return ['product' => $product, 'limit' => $limit, 'tokens' => $set ?? ($this->contextDefaults[$limit] ?? 0),
+            'default_tokens' => $this->contextDefaults[$limit] ?? 0, 'configured' => $set !== null];
+    }
+
     /** @return array<string, mixed> */
     private function routeRow(string $key): array
     {

@@ -456,6 +456,14 @@ class FakeAiClient extends AiClient
     /** @var array<string, array<string, int>> correlation key => the totals `usage()` answers for it (1.62.0) */
     public array $usageByKey = [];
 
+    /** @var array<string, array{tokens: int, default_tokens: int, configured: bool}> what contextLimits() answers; a test seeds it */
+    public array $contextLimitRows = [];
+
+    public function contextLimits(): array
+    {
+        return $this->contextLimitRows;
+    }
+
     public function usage(array $query = []): array
     {
         // A query for one correlation key answers what the test set for it (none: nothing spent).
