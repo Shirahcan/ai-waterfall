@@ -95,6 +95,16 @@ abstract class ConsoleAsk
     }
 
     /**
+     * Whether the ask was REFUSED: its reason names something the person must supply or change ("There is no picture
+     * in this session to compare with"), so the console offers no retry at another level (ai-ui 1.71.1). The product
+     * says which of its exceptions are refusals.
+     */
+    protected function isRefusal(Throwable $e): bool
+    {
+        return false;
+    }
+
+    /**
      * Start a console ask, or null when the request names no session.
      *
      * The console sends, beside the ask, `session_id`, and for the transcript `console_target` (the part the
@@ -234,7 +244,7 @@ abstract class ConsoleAsk
                 }
             });
         } catch (Throwable $e) {
-            $stopped = $this->isStop($e) ? ['stopped' => true] : [];
+            $stopped = $this->isStop($e) ? ['stopped' => true] : ($this->isRefusal($e) ? ['refused' => true] : []);
             $this->finish($console, null, $log->finish(), ['changed' => false, 'reason' => $this->reasonOf($e), ...$stopped], $runId, null, ['served_level' => $served]);
 
             throw $e;
@@ -382,7 +392,8 @@ abstract class ConsoleAsk
         $unavailable = (bool) ($result['unavailable'] ?? false);
         $why = is_string($result['reason'] ?? null) && $result['reason'] !== '' ? $result['reason'] : null;
         $outcome = ['changed' => false, 'reason' => $unavailable ? ($why ?? ($brainstorm ? self::NO_BRAINSTORM : self::NO_PLAN)) : null]
-            + (($result['stopped'] ?? false) === true ? ['stopped' => true] : []);
+            + (($result['stopped'] ?? false) === true ? ['stopped' => true] : [])
+            + (($result['refused'] ?? false) === true ? ['refused' => true] : []);
 
         if ($brainstorm) {
             $this->finish($console, $result['reply'] ?? null, $steps, $outcome, null, null, [

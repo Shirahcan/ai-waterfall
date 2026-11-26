@@ -20,6 +20,8 @@ use Throwable;
 /** A Stop, as a product's run machinery throws it. */
 class ConsoleAskTestStop extends RuntimeException {}
 
+class ConsoleAskTestRefusal extends RuntimeException {}
+
 /**
  * The console's ask lifecycle in the kit (1.67.0, shared console C1b).
  *
@@ -111,6 +113,11 @@ class ConsoleAskTest extends TestCase
             protected function isStop(Throwable $e): bool
             {
                 return $e instanceof ConsoleAskTestStop;
+            }
+
+            protected function isRefusal(Throwable $e): bool
+            {
+                return $e instanceof ConsoleAskTestRefusal;
             }
         };
     }
@@ -229,6 +236,26 @@ class ConsoleAskTest extends TestCase
         $this->assertSame('Stopped. Nothing has changed.', $outcome['reason']);
     }
 
+    public function test_a_refusal_is_recorded_as_one_on_a_build_and_on_a_plan(): void
+    {
+        [$console, $space, $session] = $this->begin();
+
+        try {
+            $this->ask()->around($console, new RunLog(fn () => null), 'run-4', fn () => throw new ConsoleAskTestRefusal('That page is no longer there.'));
+            $this->fail('the refusal must reach the caller');
+        } catch (ConsoleAskTestRefusal) {
+        }
+
+        $outcome = $this->turns($space, $session)[1]['structured']['outcome'];
+        $this->assertTrue($outcome['refused']);
+        $this->assertArrayNotHasKey('stopped', $outcome);
+        $this->assertSame('That page is no longer there.', $outcome['reason']);
+
+        [$plan, $space2, $session2] = $this->begin('plan');
+        $this->ask()->finishThinking($plan, ['unavailable' => true, 'reason' => 'There is no picture in this session to compare with.', 'refused' => true], true, null);
+        $this->assertTrue($this->turns($space2, $session2)[1]['structured']['outcome']['refused']);
+    }
+
     public function test_a_failure_is_recorded_as_a_failure_not_a_stop(): void
     {
         [$console, $space, $session] = $this->begin();
@@ -242,6 +269,7 @@ class ConsoleAskTest extends TestCase
 
         $answer = $this->turns($space, $session)[1];
         $this->assertArrayNotHasKey('stopped', $answer['structured']['outcome']);
+        $this->assertArrayNotHasKey('refused', $answer['structured']['outcome'], 'an outage may go better at another level');
         $this->assertSame('The service did not answer.', $answer['structured']['outcome']['reason']);
         $this->assertArrayNotHasKey('checkpoint_id', $answer['structured'], 'nothing changed, so no rewind point is offered');
     }
