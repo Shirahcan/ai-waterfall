@@ -275,6 +275,9 @@ abstract class ConsoleAsk
             ...($changes !== null && $changes['changes'] !== [] ? ['changes' => $changes['changes']] : []),
             // The subject's record's fields the assistant drafted, to Apply or Dismiss (the values stay on the run).
             ...(is_array($data['proposal'] ?? null) ? ['proposal' => ['title' => (string) $data['proposal']['title'], 'fields' => array_values((array) $data['proposal']['fields'])]] : []),
+            // A change the assistant proposed for the person to approve in the console (1.82.0): the chat card's own
+            // bag (operation, params, preview, reason_options, verb). The product runs it; `card-state` records it.
+            ...(self::operation($data) !== null ? ['operation' => self::operation($data)] : []),
             // The subject's record's details the run SAVED, by the details panel's names (1.75.0, owner 2026-11-23: an
             // ask that only saved a post's details ended "Nothing changed"); the panel names them on the outcome line.
             ...(self::details($data) !== [] ? ['details' => self::details($data)] : []),
@@ -295,6 +298,28 @@ abstract class ConsoleAsk
      * @param  array<string, mixed>  $data
      * @return list<string>
      */
+    /**
+     * The proposed change a run's result carries (`data.operation`), only when it holds what a card needs: the
+     * operation's key and its preview. Anything else is dropped rather than drawn half.
+     *
+     * @return array<string, mixed>|null
+     */
+    private static function operation(array $data): ?array
+    {
+        $op = $data['operation'] ?? null;
+        if (! is_array($op) || ! is_string($op['operation'] ?? null) || $op['operation'] === '' || ! is_array($op['preview'] ?? null)) {
+            return null;
+        }
+
+        return [
+            'operation' => $op['operation'],
+            'params' => is_array($op['params'] ?? null) ? $op['params'] : [],
+            'preview' => $op['preview'],
+            'reason_options' => array_values(array_filter((array) ($op['reason_options'] ?? []), 'is_string')),
+            'verb' => is_string($op['verb'] ?? null) ? $op['verb'] : null,
+        ];
+    }
+
     private static function details(array $data): array
     {
         $names = array_map(fn ($d) => is_string($d) ? trim($d) : '', is_array($data['details'] ?? null) ? array_values($data['details']) : []);

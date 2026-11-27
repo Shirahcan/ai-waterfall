@@ -172,6 +172,29 @@ class TerminalTest extends TestCase
         $this->assertSame('Could not finish: No words yet.', SessionWindow::outcome(['changed' => false, 'reason' => 'No words yet.']));
     }
 
+    public function test_a_proposed_change_tells_the_next_ask_what_became_of_it(): void
+    {
+        $outcome = ['changed' => false, 'operation' => ['operation' => 'run_plan', 'preview' => ['title' => 'A test family']]];
+
+        $this->assertSame(' Proposed for approval: "A test family". Not approved yet; nothing has run.', SessionWindow::decided($outcome, null));
+        $this->assertSame(' Proposed for approval: "A test family". The person approved it and it ran: Stopped at step 3 of 4: no package matches.',
+            SessionWindow::decided($outcome, ['card' => 'done', 'summary' => 'Stopped at step 3 of 4: no package matches.']));
+        $this->assertSame(' Proposed for approval: "A test family". The person declined it; nothing ran.', SessionWindow::decided($outcome, ['card' => 'cancelled']));
+        $this->assertSame('', SessionWindow::decided(['changed' => false], ['card' => 'done']));
+    }
+
+    public function test_a_runs_operation_reaches_the_outcome_only_when_it_holds_what_a_card_needs(): void
+    {
+        $read = new \ReflectionMethod(\Shirahcan\AiClient\Laravel\Terminal\ConsoleAsk::class, 'operation');
+
+        $this->assertNull($read->invoke(null, ['operation' => ['operation' => 'run_plan']]));
+        $this->assertNull($read->invoke(null, []));
+        $this->assertSame(
+            ['operation' => 'run_plan', 'params' => ['steps' => []], 'preview' => ['title' => 'T'], 'reason_options' => ['Asked for it'], 'verb' => 'Run'],
+            $read->invoke(null, ['operation' => ['operation' => 'run_plan', 'params' => ['steps' => []], 'preview' => ['title' => 'T'], 'reason_options' => ['Asked for it', 3], 'verb' => 'Run']]),
+        );
+    }
+
     public function test_thinking_is_kept_whole_for_the_person_and_left_out_of_the_next_asks_window(): void
     {
         $space = $this->spaceOf('u-1');

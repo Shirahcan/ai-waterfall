@@ -139,6 +139,8 @@ final class SessionWindow
                 array_filter((array) ($s['findings'] ?? []), 'is_array'),
             ));
             $open['outcome'] = self::outcome((array) ($s['outcome'] ?? []), is_array($s['plan'] ?? null) ? $s['plan'] : null);
+            // A proposed change and what became of it (1.82.0): the next ask carries on from what it made, or from where it stopped.
+            $open['outcome'] .= self::decided((array) ($s['outcome'] ?? []), is_array($turn['card_state'] ?? null) ? $turn['card_state'] : null);
             $open['ids'][] = (string) ($turn['id'] ?? '');
             $pairs[] = $open;
             $open = null;
@@ -159,6 +161,27 @@ final class SessionWindow
      * "Nothing changed.", the recap told the person their summary was never set, and every later ask's window told the
      * model the same; so the details are named here, apart from the design.
      */
+    /**
+     * The proposed change on an answer and what the person did with it (1.82.0). Read by the model, so it names no
+     * speaker: what was proposed, then that it ran (with the run's own summary), was declined, or still waits.
+     */
+    public static function decided(array $outcome, ?array $cardState): string
+    {
+        $op = $outcome['operation'] ?? null;
+        if (! is_array($op)) {
+            return '';
+        }
+        $title = trim((string) ($op['preview']['title'] ?? $op['operation'] ?? 'a change'));
+        $summary = trim((string) ($cardState['summary'] ?? ''));
+
+        return ' Proposed for approval: "'.$title.'". '.match ((string) ($cardState['card'] ?? '')) {
+            'done' => 'The person approved it and it ran'.($summary !== '' ? ': '.$summary : '.'),
+            'started' => 'The person approved it; it is running in the background.',
+            'cancelled' => 'The person declined it; nothing ran.',
+            default => 'Not approved yet; nothing has run.',
+        };
+    }
+
     public static function outcome(array $outcome, ?array $plan = null): string
     {
         if ($plan !== null) {
