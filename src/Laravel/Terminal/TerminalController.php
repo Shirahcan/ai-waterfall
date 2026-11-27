@@ -174,10 +174,11 @@ final class TerminalController extends Controller
         $data = $request->validate([
             'card' => ['required', 'string', 'in:'.implode(',', TerminalSessions::CARD_STATES)],
             'summary' => ['nullable', 'string', 'max:1000'],
+            'partial' => ['nullable', 'boolean'],
         ]);
 
         return $this->on($request, $kind, $id, fn (string $space, string $ref) => [
-            'card_state' => $this->sessions->decide($space, $session, $ref, $turn, $data['card'], $data['summary'] ?? null),
+            'card_state' => $this->sessions->decide($space, $session, $ref, $turn, $data['card'], $data['summary'] ?? null, (bool) ($data['partial'] ?? false)),
         ]);
     }
 

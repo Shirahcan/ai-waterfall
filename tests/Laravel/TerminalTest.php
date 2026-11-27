@@ -181,6 +181,15 @@ class TerminalTest extends TestCase
             SessionWindow::decided($outcome, ['card' => 'done', 'summary' => 'Stopped at step 3 of 4: no package matches.']));
         $this->assertSame(' Proposed for approval: "A test family". The person declined it; nothing ran.', SessionWindow::decided($outcome, ['card' => 'cancelled']));
         $this->assertSame('', SessionWindow::decided(['changed' => false], ['card' => 'done']));
+        $this->assertSame(' Proposed for approval: "A test family". The person approved it and it ran only part of the way: Stopped at step 3 of 4.',
+            SessionWindow::decided($outcome, ['card' => 'done', 'summary' => 'Stopped at step 3 of 4.', 'partial' => true]));
+    }
+
+    public function test_a_card_reads_back_partial_only_when_it_was_recorded_so(): void
+    {
+        $this->assertSame(['card' => 'done', 'summary' => 'Stopped.', 'partial' => true],
+            \Shirahcan\AiClient\Laravel\Terminal\TerminalSessions::cardState(['state' => ['card' => 'done', 'summary' => 'Stopped.', 'partial' => true]]));
+        $this->assertSame(['card' => 'done'], \Shirahcan\AiClient\Laravel\Terminal\TerminalSessions::cardState(['state' => ['card' => 'done', 'partial' => 'yes']]));
     }
 
     public function test_a_runs_operation_reaches_the_outcome_only_when_it_holds_what_a_card_needs(): void

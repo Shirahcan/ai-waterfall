@@ -175,7 +175,9 @@ final class SessionWindow
         $summary = trim((string) ($cardState['summary'] ?? ''));
 
         return ' Proposed for approval: "'.$title.'". '.match ((string) ($cardState['card'] ?? '')) {
-            'done' => 'The person approved it and it ran'.($summary !== '' ? ': '.$summary : '.'),
+            'done' => ($cardState['partial'] ?? false) === true
+                ? 'The person approved it and it ran only part of the way'.($summary !== '' ? ': '.$summary : '.')
+                : 'The person approved it and it ran'.($summary !== '' ? ': '.$summary : '.'),
             'started' => 'The person approved it; it is running in the background.',
             'cancelled' => 'The person declined it; nothing ran.',
             default => 'Not approved yet; nothing has run.',

@@ -231,7 +231,7 @@ final class TerminalSessions
      *
      * @return array{card: string, summary?: string, at?: string}
      */
-    public function decide(string $space, string $sessionId, string $subjectRef, string $turnId, string $card, ?string $summary = null): array
+    public function decide(string $space, string $sessionId, string $subjectRef, string $turnId, string $card, ?string $summary = null, bool $partial = false): array
     {
         if (! in_array($card, self::CARD_STATES, true)) {
             throw new AiRequestRefusedException('A suggestion is either applied or dismissed.', 422, 'bad_card_state');
@@ -259,6 +259,8 @@ final class TerminalSessions
             'card' => $card,
             'summary' => $summary === null || trim($summary) === '' ? null : self::clip(trim($summary), 1000),
             'at' => gmdate('Y-m-d\TH:i:s\Z'),
+            // A change that ran only part of the way (1.82.1: a plan stopped at a refused step): decided, but not a success.
+            'partial' => $card === 'done' && $partial ? true : null,
         ], fn ($v) => $v !== null));
 
         $this->ai->spaces()->turnState($space, $sessionId, $turnId, $state);
@@ -285,6 +287,7 @@ final class TerminalSessions
             'card' => $card,
             'summary' => is_string($state['summary'] ?? null) ? $state['summary'] : null,
             'at' => is_string($state['at'] ?? null) ? $state['at'] : null,
+            'partial' => ($state['partial'] ?? null) === true ? true : null,
         ], fn ($v) => $v !== null);
     }
 
