@@ -292,13 +292,6 @@ abstract class ConsoleAsk
     }
 
     /**
-     * The details a run says it saved (`data.details`): the names a person reads in the details panel, blanks and
-     * repeats dropped, at most 20.
-     *
-     * @param  array<string, mixed>  $data
-     * @return list<string>
-     */
-    /**
      * The proposed change a run's result carries (`data.operation`), only when it holds what a card needs: the
      * operation's key and its preview. Anything else is dropped rather than drawn half.
      *
@@ -320,6 +313,13 @@ abstract class ConsoleAsk
         ];
     }
 
+    /**
+     * The details a run says it saved (`data.details`): the names a person reads in the details panel, blanks and
+     * repeats dropped, at most 20.
+     *
+     * @param  array<string, mixed>  $data
+     * @return list<string>
+     */
     private static function details(array $data): array
     {
         $names = array_map(fn ($d) => is_string($d) ? trim($d) : '', is_array($data['details'] ?? null) ? array_values($data['details']) : []);
