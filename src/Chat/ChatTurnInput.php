@@ -48,6 +48,9 @@ final class ChatTurnInput
         public readonly bool $multiPass = false,
         // The step budget the product asks for on a multi-pass turn; ai-service clamps it (6 to 10).
         public readonly ?int $maxSteps = null,
+        // Thinking mode (1.81): the model thinks on every step and its reasoning streams as `reasoning` events, for a
+        // surface that shows it (a console run). Off by default. An older ai-service ignores it.
+        public readonly bool $reasoning = false,
     ) {}
 
     public const CONTEXT_WINDOW = 'window';
@@ -84,6 +87,7 @@ final class ChatTurnInput
             'context'         => $this->context === self::CONTEXT_THREAD ? self::CONTEXT_THREAD : null,
             'multi_pass'      => $this->multiPass ? true : null,
             'max_steps'       => $this->multiPass ? $this->maxSteps : null,
+            'reasoning'       => $this->reasoning ? true : null,
         ],static fn ($v) => $v !== null && $v !== '' && $v !== []);
     }
 }
