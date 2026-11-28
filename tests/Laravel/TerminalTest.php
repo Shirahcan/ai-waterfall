@@ -245,6 +245,31 @@ class TerminalTest extends TestCase
         $this->assertSame(array_sum($size['parts']), $size['used']);
         $this->assertTrue(SessionWindow::needsCompaction($window, $size));
         $this->assertFalse(SessionWindow::needsCompaction(['nearby' => []] + $window, $size));
+
+        // Pairs beyond the last RECENT_PAIRS are something to fold; the last three alone are not.
+        $pair = ['ask' => 'a', 'reply' => 'b', 'steps' => [], 'outcome' => 'Nothing changed.'];
+        $this->assertTrue(SessionWindow::needsCompaction(['nearby' => [], 'recent' => array_fill(0, 4, $pair)] + $window, $size));
+        $this->assertFalse(SessionWindow::needsCompaction(['nearby' => [], 'recent' => array_fill(0, 3, $pair)] + $window, $size));
+    }
+
+    public function test_every_live_pair_stays_word_for_word_so_the_count_only_grows(): void
+    {
+        $space = $this->spaceOf('u-1');
+        $session = $this->as('u-1')->postJson('/v1/admin/console/site_page/p1/sessions')->json('data.session.id');
+        $used = [];
+        foreach (range(1, 16) as $n) {
+            $this->turn($space, $session, 'Ask number '.$n.' '.str_repeat('x', $n % 2 === 0 ? 900 : 40), ['changed' => true, 'elements' => 1]);
+            $read = $this->sessions()->open($space, $session, 'site_page:p1');
+            $used[] = SessionWindow::size(SessionWindow::build($read['session'], $read['turns'], null), 0, 100000)['used'];
+        }
+
+        $window = SessionWindow::build($read['session'], $read['turns'], null);
+        $this->assertCount(16, $window['recent'], 'the first ask is still there, verbatim');
+        $this->assertStringStartsWith('Ask number 1 ', $window['recent'][0]['ask']);
+        $this->assertSame([], $window['nearby']);
+        $sorted = $used;
+        sort($sorted);
+        $this->assertSame($sorted, $used, 'never falls while nothing is summarised');
     }
 
     public function test_compact_folds_older_turns_into_the_summary_without_deleting_them(): void
@@ -269,7 +294,7 @@ class TerminalTest extends TestCase
 
         $read = $this->sessions()->open($space, $session, 'site_page:p1');
         $window = SessionWindow::build($read['session'], $read['turns'], null);
-        $this->assertSame(['Three', 'Four', 'Five'], array_column($window['recent'], 'ask'));
+        $this->assertSame(['Three', 'Four', 'Five'], array_column($window['recent'], 'ask'), 'after the summary, only what it did not fold');
         $this->assertSame([], $window['nearby']);
         $this->assertSame('Built five sections; the person wants a calm tone.', $window['summary']['text']);
     }

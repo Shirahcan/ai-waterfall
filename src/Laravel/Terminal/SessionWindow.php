@@ -7,10 +7,18 @@ namespace Shirahcan\AiClient\Laravel\Terminal;
  *
  *   1. BRIEF    the subject's standing instructions (its CLAUDE.md), shared by everyone working on it.
  *   2. SUMMARY  what compaction folded (`SessionCompactor`), one paragraph.
- *   3. NEARBY   older ask/answer pairs, one line each: the ask and what came of it.
- *   4. RECENT   the last pairs VERBATIM: the ask, the reply, the steps taken, the outcome (including
- *               what failed and what the person kept), so "do that again" and "that did not work"
- *               resolve the way they do in a Claude Code session.
+ *   3. NEARBY   no longer filled (1.83.0); kept in the shape so a reader of the window does not break.
+ *   4. RECENT   EVERY live pair since the summary, VERBATIM: the ask, the reply, the steps taken, the
+ *               outcome (including what failed and what the person kept), so "do that again" and "that
+ *               did not work" resolve the way they do in a Claude Code session.
+ *
+ * ⚠ NOTHING IS DROPPED WITHOUT BEING SUMMARISED (1.83.0, Portify owner 2026-11-28). Until 1.82 only the last 3
+ * pairs were verbatim, the 10 before them one line each, and anything older vanished with no summary: the
+ * session forgot its own early asks, and the Context count FELL as it went on. Now, as in Claude Code, the whole
+ * session since the last summary is carried and the count only grows; at COMPACT_AT of the budget the older
+ * pairs are folded into the summary (`SessionCompactor`, keeping the last RECENT_PAIRS), once.
+ * The per-message cap matches ai-service's thread mode (ChatHistory::THREAD_MESSAGE_MAX_CHARS), so a chat console
+ * (which reads the thread there) and a design console count the same conversation the same way.
  *
  * Mirrors Portify's chat `ConversationWindow`, generalised. Pure: it reads turns already fetched and
  * never calls the service, so a product can build it inside a worker as well as a request.
@@ -26,7 +34,7 @@ final class SessionWindow
 
     public const NEARBY_PAIRS = 10;
 
-    public const VERBATIM_MAX_CHARS = 3000;
+    public const VERBATIM_MAX_CHARS = 12000;
 
     public const NEARBY_MAX_CHARS = 220;
 
@@ -46,9 +54,9 @@ final class SessionWindow
         $live = array_values(array_filter($turns, fn (array $t) => ! TerminalSessions::rewound($t) && ! isset($folded[(string) ($t['id'] ?? '')])));
         $pairs = self::pairs($live);
 
-        $recent = array_slice($pairs, -self::RECENT_PAIRS);
-        $nearby = array_slice($pairs, 0, max(0, count($pairs) - self::RECENT_PAIRS));
-        $nearby = array_slice($nearby, -self::NEARBY_PAIRS);
+        // Every live pair, word for word (1.83.0): what is older is in the summary, never silently gone.
+        $recent = $pairs;
+        $nearby = [];
 
         return [
             'brief' => $brief === null ? null : self::elide((string) $brief['text'], TerminalSessions::BRIEF_MAX),
@@ -96,7 +104,9 @@ final class SessionWindow
     /** Whether the next ask should be summarised first: over the line AND something left to fold. */
     public static function needsCompaction(array $window, array $size): bool
     {
-        return ($size['used'] ?? 0) >= self::COMPACT_AT * max(1, (int) ($size['budget'] ?? 1)) && ($window['nearby'] ?? []) !== [];
+        $foldable = count($window['recent'] ?? []) > self::RECENT_PAIRS || ($window['nearby'] ?? []) !== [];
+
+        return ($size['used'] ?? 0) >= self::COMPACT_AT * max(1, (int) ($size['budget'] ?? 1)) && $foldable;
     }
 
     /**
